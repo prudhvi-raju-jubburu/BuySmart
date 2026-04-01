@@ -307,5 +307,4 @@ This project is provided as-is for educational and research purposes.
 ## Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
-"# Buy_Smart" 
-"# Buy-smart" 
+"# BuySmart" 
