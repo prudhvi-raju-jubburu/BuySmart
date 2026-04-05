@@ -4,8 +4,8 @@ Flask application for Product Recommendation and Price Comparison System
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
 from models import db, Product, ScrapingLog, User, SessionToken, WishlistItem, SearchEvent, ClickEvent, PurchaseEvent, PriceHistory, PriceDropAlert, RedirectToken, Feedback
-from scraper import ScraperManager
-from recommender import ProductRecommender
+from services.scraper import ScraperManager
+from services.recommender import ProductRecommender
 from config import Config
 import schedule
 import time
