@@ -9,6 +9,7 @@ from models import Product, db
 from config import Config
 from scraper import ScraperManager
 import logging
+import re
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -191,16 +192,71 @@ class ProductRecommender:
         
         # Calculate similarity scores using simple text matching (fast, no training needed)
         products_with_scores = []
+        
+        # Pre-process query words for stemming
+        query_words = query_lower.split()
+        stemmed_query_words = [w.rstrip('s') if len(w) > 3 else w for w in query_words]
+        
         for p in products_list:
-            # Simple similarity: check if query words appear in product name/description
+            # Simple similarity: check if query words (stemmed) appear in product name/description
             name = (p.get('name') or '').lower()
             desc = (p.get('description') or '').lower()
             category = (p.get('category') or '').lower()
             text = f"{name} {desc} {category}"
             
-            query_words = query_lower.split()
-            matches = sum(1 for word in query_words if word in text)
+            matches = 0
+            for i, w in enumerate(query_words):
+                sw = stemmed_query_words[i]
+                # Match either the full word or the stemmed version
+                if w in text or (len(sw) > 3 and sw in text):
+                    matches += 1
+                # Or if the title contains a word that is in the query (e.g. title is 'Laptop' query is 'Laptops')
+                elif any(val in w for val in text.split() if len(val) > 3):
+                    matches += 1
+            
             similarity_score = min(1.0, matches / max(1, len(query_words)))
+            
+            # HARDWARE SPECIFICATION BOOST
+            # For electronics queries, boost results that look like real products with specs
+            hardware_keywords = ['laptop', 'phone', 'mobile', 'ram', 'ssd', 'hdd', 'gb', 'processor', 'core', 'ryzen', 'intel', 'snapdragon', 'display', 'screen']
+            electronics_keywords = ['laptop', 'phone', 'mobile', 'macbook', 'ipad', 'tablet', 'desktop', 'monitor', 'gpu', 'cpu', 'computer']
+            is_hardware_query = any(ek in query_lower for ek in electronics_keywords)
+            
+            if is_hardware_query:
+                # Count how many hardware/spec keywords are in the text
+                spec_matches = sum(1 for hw in hardware_keywords if hw in text)
+                if spec_matches >= 2:
+                    # Boost by 10% if it looks like a technical listing
+                    similarity_score = min(1.0, similarity_score * 1.1)
+                elif spec_matches == 0 and any(tk in text for tk in ['toy', 'kids', 'educational']):
+                    # Penalize toys that pretend to be laptops
+                    similarity_score *= 0.5
+            
+            # Define accessory keywords
+            accessory_keywords = [
+                'case', 'cover', 'guard', 'protector', 'glass', 'pouch', 
+                'skin', 'bumper', 'charger', 'cable', 'strap', 
+                'bag', 'backpack', 'sleeve', 'stand', 'mouse pad', 'keyboard cover'
+            ]
+            asked_for_accessory = any(ak in query_lower for ak in accessory_keywords)
+            
+            # CRITICAL: ACCESSORY EXCLUSION LOGIC
+            # If searching for a core device (laptop/phone), and product is an accessory (bag/case),
+            # we should exclude it entirely from the top results.
+            if not asked_for_accessory:
+                # Use word-boundary search to avoid false positives (e.g. 'case' in 'case-hardened')
+                is_accessory = any(re.search(r'\b' + re.escape(ak) + r'\b', text) for ak in accessory_keywords)
+                
+                # Check for electronics keywords to determine if this is a device query
+                electronics_keywords = ['laptop', 'phone', 'mobile', 'macbook', 'ipad', 'tablet', 'desktop', 'monitor', 'gpu', 'cpu', 'computer']
+                is_electronics_query = any(ek in query_lower for ek in electronics_keywords)
+                
+                if is_accessory and is_electronics_query:
+                    # If this is an accessory but the user asked for electronics, it gets 0 similarity.
+                    similarity_score = 0.0
+                elif is_accessory:
+                    # Generically penalize accessories if not specifically asked for
+                    similarity_score *= 0.05
             
             # Calculate recommendation score (price, rating, etc.)
             price = p.get('price', 0) or 0
@@ -208,13 +264,14 @@ class ProductRecommender:
             review_count = p.get('review_count', 0) or 0
             platform = p.get('platform', '')
             
-            # Price score (lower is better)
+            # Price score (lower is better, but we don't want it to dominate expensive electronics)
             prices = [pr.get('price', 0) for pr in products_list if pr.get('price')]
             if prices and price:
                 min_p = min(prices)
                 max_p = max(prices)
                 if max_p > min_p:
-                    price_score = 1.0 - ((price - min_p) / (max_p - min_p))
+                    # Logarithmic price scaling to reduce the massive score gap between a 500 bag and a 50k laptop
+                    price_score = 1.0 - (np.log1p(price - min_p) / np.log1p(max_p - min_p))
                 else:
                     price_score = 1.0
             else:
@@ -226,6 +283,18 @@ class ProductRecommender:
             # Platform trust
             platform_trust = self.scraper_manager.get_platform_trust_score(platform)
             
+            # Boost electronics platforms for electronics queries (laptop, phone, etc.)
+            electronics_keywords = ['laptop', 'phone', 'mobile', 'macbook', 'ipad', 'tablet', 'desktop', 'monitor', 'gpu', 'cpu', 'smartwatch', 'earbuds', 'headphone']
+            if any(ek in query_lower for ek in electronics_keywords):
+                if platform.lower() in ['amazon', 'flipkart']:
+                    platform_trust += 0.2  # Significant boost for electronics specialists
+
+            # Boost fashion platforms for fashion queries (shirt, pant, etc.)
+            fashion_keywords = ['shirt', 'tshirt', 'pant', 'jeans', 'shoe', 'sneaker', 'dress', 'saree', 'kurti', 'jacket', 'hoodie', 'sweater']
+            if any(fk in query_lower for fk in fashion_keywords):
+                if platform.lower() in ['myntra', 'meesho', 'flipkart']:
+                    platform_trust += 0.2  # Significant boost for fashion specialists
+                    
             # Review count score (normalized)
             review_counts = [rc.get('review_count', 0) for rc in products_list if rc.get('review_count')]
             if review_counts and review_count:
@@ -234,20 +303,17 @@ class ProductRecommender:
             else:
                 review_score = 0.0
             
-            # IMPROVED RANKING: Prioritize Trust + Rating + Price
-            # Platform Trust: 40% (most important - trusted sites)
-            # Rating: 30% (quality indicator)
-            # Price: 20% (value for money)
-            # Reviews: 10% (popularity)
+            # IMPROVED RANKING: Prioritize Trust + Rating + Search Match
             recommendation_score = (
-                0.40 * platform_trust +      # Platform trust is most important
-                0.30 * rating_score +      # High rating = good quality
-                0.20 * price_score +       # Lower price = better value
-                0.10 * review_score        # More reviews = trusted
+                0.45 * platform_trust +      # Higher trust for electronics
+                0.25 * rating_score +        # Quality
+                0.20 * price_score +         # Value (log-scaled)
+                0.10 * review_score          # Popularity
             )
             
-            # Final score: 70% recommendation (trust+rating+price) + 30% similarity (query match)
-            combined_score = (0.7 * recommendation_score) + (0.3 * similarity_score)
+            # Final score: 75% similarity (query match) + 25% recommendation (trust+rating+price)
+            # This ensures that query relevance is the primary factor, preventing high-rated bags from outranking laptops.
+            combined_score = (0.25 * recommendation_score) + (0.75 * similarity_score)
             
             products_with_scores.append({
                 **p,

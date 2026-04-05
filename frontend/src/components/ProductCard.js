@@ -34,6 +34,7 @@ const ProductCard = ({ product, user, source = 'search', searchQuery, isSelected
     );
   };
 
+
   const platformClass = `platform-${(product.platform || 'other').toLowerCase()}`;
 
   const handleBuy = async () => {

@@ -12,32 +12,16 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('buysmart_token');
   if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
+    if (!config.headers) config.headers = {};
+    config.headers['Authorization'] = `Bearer ${token}`;
   }
   return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 export const searchProducts = async (query, filters = {}) => {
-  const requestData = {
-    query: query,
-    filters: {
-      min_price: filters.minPrice ? parseFloat(filters.minPrice) : undefined,
-      max_price: filters.maxPrice ? parseFloat(filters.maxPrice) : undefined,
-      platforms: filters.platforms && filters.platforms.length > 0 ? filters.platforms : undefined,
-      min_rating: filters.minRating ? parseFloat(filters.minRating) : undefined,
-    },
-    top_n: 50,
-    fast_mode: filters.fastMode !== false,
-    include_live_scraping: !!filters.includeLiveScraping,
-  };
-
-  // Remove undefined values
-  Object.keys(requestData.filters).forEach(
-    (key) => requestData.filters[key] === undefined && delete requestData.filters[key]
-  );
-
-  const response = await api.post('/search', requestData);
+  const response = await api.post('/search', { query, filters });
   return response.data;
 };
 
@@ -133,9 +117,30 @@ export const getSearchHistory = async (params = {}) => {
   return response.data;
 };
 
+export const clearSearchHistory = async () => {
+  const response = await api.delete('/history/search');
+  return response.data;
+};
+
 // Analytics
 export const getAnalyticsOverview = async (days = 30) => {
   const response = await api.get('/analytics/overview', { params: { days } });
+  return response.data;
+};
+
+// Feedback
+export const getFeedback = async (params = {}) => {
+  const response = await api.get('/feedback', { params });
+  return response.data;
+};
+
+export const submitFeedback = async (data) => {
+  const response = await api.post('/feedback', data);
+  return response.data;
+};
+
+export const getRecommendations = async (params = {}) => {
+  const response = await api.get('/recommendations', { params });
   return response.data;
 };
 

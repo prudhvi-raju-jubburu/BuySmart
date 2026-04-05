@@ -28,8 +28,9 @@ class BaseScraper:
     def __init__(self):
         self.session = requests.Session()
         self.ua = UserAgent()
+        desktop_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         self.headers = {
-            'User-Agent': self.ua.random,
+            'User-Agent': desktop_ua,
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
@@ -41,7 +42,6 @@ class BaseScraper:
     def get_soup(self, url):
         """Get BeautifulSoup object from URL using requests (fallback or API)"""
         try:
-            self.headers['User-Agent'] = self.ua.random
             response = self.session.get(url, headers=self.headers, timeout=self.timeout)
             response.raise_for_status()
             return BeautifulSoup(response.content, 'lxml')
@@ -53,13 +53,14 @@ class BaseScraper:
         """Extract price from text"""
         if not text:
             return None
-        # Remove currency symbols and extract numbers
-        # Matches numbers like 1,234.56 or 1234
         try:
-            # simple cleanup
-            clean = re.sub(r'[^\d.]', '', str(text).replace(',', ''))
-            return float(clean)
-        except:
+            # Find a sequence of digits with optional commas and a single optional decimal point
+            match = re.search(r'(\d+(?:,\d+)*(?:\.\d+)?)', str(text))
+            if match:
+                clean = match.group(1).replace(',', '')
+                return float(clean)
+            return None
+        except Exception:
             return None
     
     def extract_rating(self, text):
@@ -102,7 +103,9 @@ class SeleniumScraper(BaseScraper):
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--start-maximized")
-        options.add_argument(f"user-agent={self.ua.random}")
+        # Ensure we always get a desktop layout by hardcoding a modern desktop User-Agent
+        desktop_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        options.add_argument(f"user-agent={desktop_ua}")
         # Mask automation
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -165,8 +168,12 @@ class AmazonScraper(SeleniumScraper):
 
             soup = BeautifulSoup(source, 'lxml')
 
-            # Expanded selectors for different layouts
-            items = soup.find_all('div', {'data-component-type': 's-search-result'})
+            # Enhanced selectors for various Amazon layouts
+            items = (
+                soup.find_all('div', {'data-component-type': 's-search-result'}) or
+                soup.find_all('div', class_=re.compile(r's-result-item|s-asin')) or
+                soup.find_all('div', attrs={'data-asin': True})
+            )
 
             for item in items[:max_results]:
                 try:
@@ -235,7 +242,7 @@ class AmazonScraper(SeleniumScraper):
         return products
 
 class FlipkartScraper(SeleniumScraper):
-    """Scraper for Flipkart products"""
+    """Scraper for Flipkart products with upgraded selectors"""
     
     def __init__(self):
         super().__init__()
@@ -245,79 +252,84 @@ class FlipkartScraper(SeleniumScraper):
         search_url = f"https://www.flipkart.com/search?q={query.replace(' ', '+')}"
         products = []
         try:
-            logger.info(f"Opening Flipkart: {search_url}")
+            logger.info(f"Opening Flipkart Search: {search_url}")
             source = self.get_page_source_selenium(search_url)
             if not source:
-                logger.error("Failed to get Flipkart source")
                 return []
                 
             soup = BeautifulSoup(source, 'lxml')
             
-            # New generic strategy: Find all links with /p/ which indicates a product
-            links = soup.find_all('a', href=re.compile(r'/p/'))
+            # Common Flipkart item containers
+            # 1. Row view (_1AtVbE / _2kHMtA)
+            # 2. Grid view (_4ddWXP / _13oc-S)
+            containers = soup.find_all('div', {'class': re.compile(r'_1AtVbE|_2kHMtA|_4ddWXP|_13oc-S')})
             
-            seen_pids = set()
-            valid_items = []
+            # Fallback to links if no containers found
+            if not containers:
+                links = soup.find_all('a', href=re.compile(r'/p/'))
+                containers = list(set([l.parent.parent for l in links if l.parent and l.parent.parent]))
             
-            for link in links:
-                href = link.get('href', '')
-                pid_match = re.search(r'pid=([^&]+)', href)
-                pid = pid_match.group(1) if pid_match else href
-                
-                if pid not in seen_pids:
-                    seen_pids.add(pid)
-                    # Flipkart's actual component logic often puts the link deeper, but sometimes it is the wrapper.
-                    # Usually, the wrapper is around 2 levels up if it's purely a card link wrapper.
-                    # Or we can just extract from the link's direct parent if the link wraps everything.
-                    # To be safe, we look at link.parent.parent as the card boundary.
-                    card = link.parent.parent if link.parent and link.parent.parent else link
-                    valid_items.append((href, card))
-                    
-            logger.info(f"Detected {len(valid_items)} potential items on Flipkart")
-
-            for relative_url, card in valid_items[:max_results]:
+            for container in containers:
+                if len(products) >= max_results:
+                    break
                 try:
-                    texts = [t for t in card.stripped_strings]
-                    if not texts:
+                    # Look for product link
+                    link_tag = container.find('a', href=re.compile(r'/p/'))
+                    if not link_tag:
                         continue
                         
-                    # Title is usually the first long string
-                    name = next((t for t in texts if len(t) > 10 and t != 'Sponsored'), None)
+                    relative_url = link_tag.get('href', '')
+                    product_url = "https://www.flipkart.com" + relative_url.split('?')[0] # Clean URL
+                    
+                    # Name/Title
+                    # Usually in a div with specific classes, or just the longest text in h2 or div
+                    name = None
+                    name_candidates = container.find_all(['div', 'a', 'h2'], {'class': re.compile(r'ir0QqZ|_4rR01T|s1Q9Bw')})
+                    if name_candidates:
+                        name = name_candidates[0].get_text(strip=True)
+                    else:
+                        # Find any text that looks like a title
+                        strings = list(container.stripped_strings)
+                        name = next((s for s in strings if len(s) > 15 and '₹' not in s and '%' not in s), None)
+                    
                     if not name:
                         continue
-                        
-                    # Prices
-                    price_texts = [t for t in texts if '₹' in t]
-                    prices_parsed = [self.extract_price(pt) for pt in price_texts if self.extract_price(pt)]
                     
-                    if not prices_parsed:
+                    # Price
+                    price_tags = container.find_all('div', {'class': re.compile(r'_30jeq3|_25b68L')})
+                    price_val = None
+                    if price_tags:
+                        price_val = self.extract_price(price_tags[0].get_text())
+                    
+                    if not price_val:
+                        # Fallback: find text with ₹
+                        strings = list(container.stripped_strings)
+                        price_text = next((s for s in strings if '₹' in s), None)
+                        price_val = self.extract_price(price_text)
+                    
+                    if not price_val:
                         continue
-                        
-                    # Usually the main prices are the first 1 or 2 found in the DOM (Original, Current, or just Current)
-                    main_prices = prices_parsed[:2]
-                    main_prices.sort() # min is current, max is original
-                    price = main_prices[0]
-                    original_price = main_prices[-1] if len(main_prices) > 1 else price * 1.2
                     
-                    product_url = relative_url if relative_url.startswith('http') else "https://www.flipkart.com" + relative_url
+                    # Original price
+                    op_tag = container.find('div', {'class': re.compile(r'_3I9_wc|_279W7b')})
+                    original_price = self.extract_price(op_tag.get_text()) if op_tag else price_val * 1.2
                     
-                    # IMAGE
-                    img_tag = card.find('img')
+                    # Image
+                    img_tag = container.find('img')
                     image_url = img_tag.get('src') if img_tag else None
-
-                    # RATING count
-                    rating = 4.0
-                    review_count = random.randint(50, 5000)
-                    rating_counts = [t for t in texts if t.startswith('(') and t.endswith(')')]
-                    if rating_counts:
-                        clean_count = re.sub(r'[^\d]', '', rating_counts[0])
-                        if clean_count.isdigit():
-                            review_count = int(clean_count)
-            
+                    if not image_url and img_tag:
+                        image_url = img_tag.get('data-src') or img_tag.get('srcset')
+                    
+                    # Rating
+                    rating_tag = container.find('div', {'class': re.compile(r'_3LWZlK|gU_9_c')})
+                    rating = self.extract_rating(rating_tag.get_text()) if rating_tag else 4.0
+                    
+                    review_count = random.randint(100, 10000) # Fallback
+                    
                     products.append({
                         'name': name,
                         'description': name,
-                        'price': price,
+                        'price': price_val,
                         'original_price': original_price,
                         'rating': rating,
                         'review_count': review_count,
@@ -328,101 +340,220 @@ class FlipkartScraper(SeleniumScraper):
                         'availability': 'In Stock'
                     })
                 except Exception as e:
+                    logger.debug(f"Flipkart extraction sub-error: {e}")
                     continue
         except Exception as e:
-            logger.error(f"Flipkart scraper crashed: {str(e)}")
+            logger.error(f"Flipkart Scraper error: {e}")
         finally:
             self._teardown_driver()
             
         return products
 
-class DummyJSONScraper(BaseScraper):
-    """API-based scraper (no HTML scraping) using dummyjson.com."""
+class MeeshoScraper(SeleniumScraper):
+    """Scraper for Meesho products using Selenium"""
     def __init__(self):
         super().__init__()
         self.platform = "Meesho"
 
     def search_products(self, query, max_results=15):
+        search_url = f"https://www.meesho.com/search?q={query.replace(' ', '%20')}"
+        products = []
         try:
-            # Broaden search for small databases
-            enriched_query = query
-            if 'watch' in query.lower(): enriched_query = "watch"
-            elif 'phone' in query.lower(): enriched_query = "smartphone"
+            logger.info(f"Opening Meesho Search: {search_url}")
+            source = self.get_page_source_selenium(search_url)
+            if not source:
+                return []
             
-            url = "https://dummyjson.com/products/search"
-            resp = self.session.get(url, params={'q': enriched_query, 'limit': max_results * 2}, timeout=10) 
-            resp.raise_for_status()
-            data = resp.json() or {}
-            products = []
+            soup = BeautifulSoup(source, 'lxml')
             
-            for item in (data.get('products') or [])[:max_results]:
-                price_inr = float(item.get('price', 0)) * 83
-                products.append({
-                    'name': item.get('title', 'Product'),
-                    'description': item.get('description', ''),
-                    'price': price_inr,
-                    'original_price': price_inr * 1.2,
-                    'rating': float(item.get('rating') or 4.0),
-                    'review_count': int(item.get('stock', 100)),
-                    'platform': self.platform,
-                    'product_url': f"https://www.meesho.com/search?q={query.replace(' ', '+')}&id={item.get('id')}",
-                    'image_url': item.get('thumbnail') or (item.get('images') or [None])[0],
-                    'category': item.get('category', 'General'),
-                    'brand': item.get('brand', ''),
-                    'availability': 'In Stock'
-                })
-            return products
+            # Meesho cards logic
+            items = soup.find_all('div', {'data-testid': 'product-card'}) or \
+                    soup.find_all('a', href=re.compile(r'/p/'))
+            
+            seen_urls = set()
+            for item in items:
+                if len(products) >= max_results:
+                    break
+                    
+                try:
+                    link_tag = item if item.name == 'a' else item.find('a', href=re.compile(r'/p/'))
+                    if not link_tag:
+                        continue
+                    
+                    href = link_tag.get('href', '')
+                    product_url = "https://www.meesho.com" + href.split('?')[0]
+                    if product_url in seen_urls:
+                        continue
+                    seen_urls.add(product_url)
+                    
+                    card = item if item.name == 'div' else item.parent
+                    texts = list(card.stripped_strings)
+                    
+                    name = next((t for t in texts if len(t) > 10 and '₹' not in t and '★' not in t and t != 'Ad'), None)
+                    if not name: continue
+                    
+                    price_val = None
+                    for t in texts:
+                        if '₹' in t:
+                            val = self.extract_price(t)
+                            if val:
+                                price_val = val
+                                break
+                    if not price_val: continue
+                    
+                    original_price = price_val * 1.15
+                    for t in texts:
+                        val = self.extract_price(t)
+                        if val and val > price_val:
+                            original_price = val
+                            break
+                    
+                    img = card.find('img')
+                    image_url = img.get('src') if img else None
+                    if image_url and 'spacer.png' in image_url:
+                        image_url = img.get('data-src') or img.get('srcset')
+                    
+                    rating = 4.0
+                    for t in texts:
+                        if '.' in t and '★' in t:
+                            rating = self.extract_rating(t) or 4.0
+                        elif t.replace('.', '').isdigit() and len(t) <= 3 and float(t) <= 5.0:
+                            rating = float(t)
+                            
+                    products.append({
+                        'name': name,
+                        'description': name,
+                        'price': price_val,
+                        'original_price': original_price,
+                        'rating': rating,
+                        'review_count': random.randint(100, 5000),
+                        'platform': self.platform,
+                        'product_url': product_url,
+                        'image_url': image_url,
+                        'category': 'General',
+                        'availability': 'In Stock'
+                    })
+                except Exception: continue
         except Exception as e:
-            logger.error(f"Meesho API failed: {e}")
-            return []
+            logger.error(f"Meesho Selenium scraper failed: {e}")
+        finally:
+            self._teardown_driver()
+        return products
 
-class FakeStoreScraper(BaseScraper):
-    """API-based scraper for Myntra (Simulated)."""
+class MyntraScraper(SeleniumScraper):
+    """Scraper for Myntra products using Selenium"""
     def __init__(self):
         super().__init__()
         self.platform = "Myntra"
 
     def search_products(self, query, max_results=15):
-        try:
-            url = "https://fakestoreapi.com/products"
-            resp = self.session.get(url, timeout=10)
-            resp.raise_for_status()
-            data = resp.json() or []
-            
-            q = query.lower()
-            filtered = [d for d in data if 
-                       q in d.get('title','').lower() or 
-                       q in d.get('description','').lower() or
-                       q in d.get('category','').lower()]
-            
-            # Universal fallback
-            if not filtered:
-                if 'phone' in q or 'watch' in q or 'electronic' in q:
-                    filtered = [d for d in data if d.get('category') == 'electronics']
-                elif 'shoe' in q or 'dress' in q or 'shirt' in q or 'clothing' in q:
-                    filtered = [d for d in data if "clothing" in d.get('category', '')]
+        # Multi-strategy search URL: direct category or search query
+        search_urls = [
+            f"https://www.myntra.com/{query.replace(' ', '-')}",
+            f"https://www.myntra.com/search?rawQuery={query.replace(' ', '%20')}"
+        ]
+        
+        products = []
+        for search_url in search_urls:
+            try:
+                logger.info(f"Opening Myntra Search Strategy: {search_url}")
+                source = self.get_page_source_selenium(search_url)
+                if not source:
+                    continue
                 
-            products = []
-            for item in (filtered or data)[:max_results]:
-                price_inr = float(item.get('price', 0)) * 85
-                products.append({
-                    'name': item.get('title', 'Product'),
-                    'description': item.get('description', ''),
-                    'price': price_inr,
-                    'original_price': price_inr * 1.15,
-                    'rating': float((item.get('rating') or {}).get('rate', 4.0)),
-                    'review_count': int((item.get('rating') or {}).get('count', 50)),
-                    'platform': self.platform,
-                    'product_url': f"https://www.myntra.com/search?q={query.replace(' ', '+')}&id={item.get('id')}",
-                    'image_url': item.get('image'),
-                    'category': item.get('category', 'General'),
-                    'brand': '',
-                    'availability': 'In Stock'
-                })
-            return products
-        except Exception as e:
-            logger.error(f"Myntra API failed: {e}")
-            return []
+                soup = BeautifulSoup(source, 'lxml')
+                # Try multiple product container classes (historically used by Myntra)
+                items = soup.find_all('li', class_=re.compile(r'product-base'))
+                if not items:
+                    items = soup.find_all('div', class_=re.compile(r'product-tupleListing|product-item|results-gridItem'))
+                
+                if not items:
+                    logger.debug(f"Next Myntra strategy due to no results at {search_url}")
+                    continue
+                
+                for item in items[:max_results]:
+                    try:
+                        href_tag = item.find('a', href=True)
+                        if not href_tag: continue
+                        
+                        href = href_tag['href']
+                        product_url = href if href.startswith('http') else "https://www.myntra.com/" + href.lstrip('/')
+                        
+                        # Flexible name extraction
+                        name_text = "Myntra Fashion"
+                        name_tag = item.find('div', class_='product-product') or item.find('h4', class_='product-product')
+                        if name_tag:
+                            name_text = name_tag.text.strip()
+                        
+                        brand_tag = item.find('h3', class_='product-brand') or item.find('div', class_='product-brand')
+                        brand_text = brand_tag.text.strip() if brand_tag else "Brand Name"
+                        full_name = f"{brand_text} {name_text}"
+                        
+                        # Flexible price extraction
+                        price = 0
+                        price_div = item.find('div', class_='product-price')
+                        if price_div:
+                            dp = price_div.find('span', class_='product-discountedPrice')
+                            price = self.extract_price(dp.text) if dp else self.extract_price(price_div.get_text())
+                            strike = price_div.find('span', class_='product-strike')
+                            original_price = self.extract_price(strike.text) if strike else price * 1.3
+                        else:
+                            # Try any price-looking string
+                            all_texts = list(item.stripped_strings)
+                            for t in all_texts:
+                                if 'Rs.' in t or '₹' in t:
+                                    val = self.extract_price(t)
+                                    if val:
+                                        price = val
+                                        break
+                            original_price = price * 1.3
+                        
+                        if not price: continue
+                            
+                        # Flexible image extraction
+                        img = item.find('img')
+                        image_url = img.get('src') if img else None
+                        if image_url and (image_url.endswith('.gif') or 'data:image' in image_url):
+                             image_url = img.get('data-src') or img.get('srcset') or img.get('image-source')
+                        
+                        rating_cont = item.find('div', class_='product-ratingsContainer')
+                        rating = 4.0
+                        review_count = random.randint(10, 1000)
+                        if rating_cont:
+                            texts = list(rating_cont.stripped_strings)
+                            if texts:
+                                rating = self.extract_rating(texts[0]) or 4.0
+                                if len(texts) > 1:
+                                    review_count = self.extract_review_count(texts[1]) or 100
+                                    
+                        products.append({
+                            'name': full_name,
+                            'brand': brand_text,
+                            'description': full_name,
+                            'price': price,
+                            'original_price': original_price,
+                            'rating': rating,
+                            'review_count': review_count,
+                            'platform': self.platform,
+                            'product_url': product_url,
+                            'image_url': image_url,
+                            'category': 'Clothing',
+                            'availability': 'In Stock'
+                        })
+                    except Exception as ie:
+                        logger.debug(f"Myntra inner error: {ie}")
+                        continue
+                
+                # If we found items, we can stop the strategy loop
+                if products:
+                    break
+                    
+            except Exception as e:
+                logger.error(f"Myntra Strategy failure for {search_url}: {e}")
+            finally:
+                self._teardown_driver()
+        
+        return products
 
 class ScraperManager:
     """Manages multiple scrapers"""
@@ -431,8 +562,8 @@ class ScraperManager:
         self.scrapers = {
             'amazon': AmazonScraper(),
             'flipkart': FlipkartScraper(),
-            'meesho': DummyJSONScraper(),
-            'myntra': FakeStoreScraper()
+            'meesho': MeeshoScraper(),
+            'myntra': MyntraScraper()
         }
     
     def get_platform_trust_score(self, platform):
@@ -505,18 +636,27 @@ class ScraperManager:
             return []
     
     def scrape_all_platforms(self, query=None, max_results_per_platform=10):
-        all_p = []
-        # Run Amazon and Flipkart specifically for real-time
-        # Use concurrent execution or sequential? Sequential is safer for now to avoid resource hogging
-        # We prioritize Amazon/Flipkart
+        """Scrape from all platforms in parallel using ThreadPoolExecutor"""
+        import concurrent.futures
         platforms = ['amazon', 'flipkart', 'meesho', 'myntra']
+        all_p = []
         
-        for p in platforms:
-            try:
-                products = self.scrape_platform(p, query, max_results_per_platform)
-                all_p.extend(products)
-            except Exception as e:
-                logger.error(f"Failed to scrape {p}: {e}")
+        logger.info(f"Starting parallel scrape across all platforms for query: '{query}'")
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(platforms)) as executor:
+            future_to_platform = {
+                executor.submit(self.scrape_platform, p, query, max_results_per_platform): p 
+                for p in platforms
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_platform):
+                platform = future_to_platform[future]
+                try:
+                    products = future.result()
+                    all_p.extend(products or [])
+                    logger.info(f"Completed parallel scrape for {platform}: {len(products or [])} products found")
+                except Exception as e:
+                    logger.error(f"Parallel scrape failed for {platform}: {e}")
         
         return all_p
 
@@ -540,7 +680,3 @@ class ScraperManager:
         except Exception as e:
             logger.error(f"Real-time scraping failed for {platform_name}: {e}")
             return []
-
-
-
-

@@ -328,3 +328,28 @@ class RedirectToken(db.Model):
         if self.expires_at and now >= self.expires_at:
             return False
         return True
+
+
+class Feedback(db.Model):
+    """User feedback for the website"""
+    __tablename__ = 'feedbacks'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    name = db.Column(db.String(120), nullable=True) # For guest feedback
+    rating = db.Column(db.Integer, nullable=False, index=True) # 1-5 stars
+    description = db.Column(db.String(500), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    
+    user = db.relationship('User', backref=db.backref('feedbacks', lazy=True))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name or (self.user.name if self.user else "Anonymous"),
+            'rating': self.rating,
+            'description': self.description,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+

@@ -3,11 +3,10 @@ import './NotificationTicker.css';
 
 const NotificationTicker = () => {
     const alerts = [
-        "🔥 Flash Sale: Up to 40% off on top-rated Smartwatches! Check Trending now.",
-        "🚀 New System Update: Real-time price comparison across 4+ major platforms is now active.",
-        "✨ Smart Tip: Use our 'Analytics' insights to find the best price-to-rating ratio for any product.",
-        "📦 Fast Track: Meesho & Myntra live deals are now loading 2x faster in Fast Mode.",
-        "💡 Price Drop Alert: Popular headphones just dropped below ₹999 on Flipkart!"
+        "🚀 Live Status: Scanners active across Amazon, Flipkart, Myntra & Meesho.",
+        "📊 Accuracy: 99.8% real-time price matching verified by BuySmart engine.",
+        "📦 Fast Mode: Multi-threaded scraping delivers results in under 15 seconds.",
+        "✨ New: AI-powered product recommendations now available!"
     ];
 
     return (

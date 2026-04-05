@@ -55,27 +55,27 @@
 }
 
 .platform-amazon {
-  background: rgba(255, 153, 0, 0.2);
-  color: #ff9900;
-  border: 1px solid rgba(255, 153, 0, 0.3);
+  background: #f59e0b;
+  color: white;
+  border: none;
 }
 
 .platform-flipkart {
-  background: rgba(40, 116, 240, 0.2);
-  color: #2874f0;
-  border: 1px solid rgba(40, 116, 240, 0.3);
+  background: #2563eb;
+  color: white;
+  border: none;
 }
 
 .platform-meesho {
-  background: rgba(244, 51, 151, 0.2);
-  color: #f43397;
-  border: 1px solid rgba(244, 51, 151, 0.3);
+  background: #db2777;
+  color: white;
+  border: none;
 }
 
 .platform-myntra {
-  background: rgba(255, 63, 108, 0.2);
-  color: #ff3f6c;
-  border: 1px solid rgba(255, 63, 108, 0.3);
+  background: #ff3f6c;
+  color: white;
+  border: none;
 }
 
 .product-image-container {

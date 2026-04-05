@@ -1,0 +1,68 @@
+.recommendations-section {
+  padding: 4rem 0rem;
+  width: 100%;
+}
+
+.recommendations-section .section-header {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.recommendations-section .section-title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-main);
+  background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.5rem;
+}
+
+.recommendations-section .section-subtitle {
+  color: var(--text-dim);
+  font-size: 1rem;
+}
+
+.recommendations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 2rem;
+  animation: fadeIn 0.8s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Skeleton loader */
+.recommendations-skeleton {
+  padding: 4rem 0;
+}
+
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 2rem;
+}
+
+.skeleton-card {
+  height: 400px;
+  background: var(--glass);
+  border-radius: 20px;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+  100% { opacity: 0.3; }
+}
+
+@media (max-width: 768px) {
+  .recommendations-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+  }
+}

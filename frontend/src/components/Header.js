@@ -5,11 +5,10 @@ const Header = () => {
   return (
     <header className="app-header">
       <h1>BuySmart</h1>
-      <p className="subtitle">Compare prices across platforms • Get smart recommendations • Track purchases </p>
+      {/* The subtitle was moved to App.js or another component.
+          This header now contains only the main title. */}
     </header>
   );
 };
 
 export default Header;
-
-

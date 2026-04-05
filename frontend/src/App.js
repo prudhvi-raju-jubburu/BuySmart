@@ -2,18 +2,21 @@ import React, { useState, useEffect } from 'react';
 import './App.css';
 import Header from './components/Header';
 import SearchSection from './components/SearchSection';
-import StatsBar from './components/StatsBar';
 import ProductGrid from './components/ProductGrid';
 import LoadingSpinner from './components/LoadingSpinner';
 import TrendingSection from './components/TrendingSection';
 import Navbar from './components/Navbar';
 import HomePlatforms from './components/HomePlatforms';
+import Recommendations from './components/Recommendations';
 import UserPanel from './components/UserPanel';
 import Modal from './components/Modal';
 import ComparisonChart from './components/ComparisonChart';
 import SearchAnalytics from './components/SearchAnalytics';
 import NotificationTicker from './components/NotificationTicker';
-import { searchProducts, getStats, getMe, getWishlist, getPurchases } from './services/api';
+import { searchProducts, getStats, getMe, getWishlist, getPurchases, getSearchHistory, clearSearchHistory } from './services/api';
+
+import Footer from './components/Footer';
+import FloatingFeedback from './components/FloatingFeedback';
 
 function App() {
   const [products, setProducts] = useState([]);
@@ -22,6 +25,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [user, setUser] = useState(null);
   const [userPanelOpen, setUserPanelOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('search'); // home | search | trending | analytics
   const [theme, setTheme] = useState(localStorage.getItem('buysmart_theme') || 'dark');
   const [filters, setFilters] = useState({
@@ -34,6 +38,7 @@ function App() {
   });
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [showComparison, setShowComparison] = useState(false);
+  const [history, setHistory] = useState([]);
 
   useEffect(() => {
     document.body.className = theme === 'light' ? 'light-theme' : '';
@@ -65,24 +70,34 @@ function App() {
 
   const bootstrapAuth = async () => {
     const token = localStorage.getItem('buysmart_token');
-    if (!token) return;
+    if (!token) {
+      await refreshUserData();
+      return;
+    }
     try {
       const data = await getMe();
       setUser(data.user);
-      await refreshUserCounts();
+      await refreshUserData();
     } catch (_e) {
       localStorage.removeItem('buysmart_token');
       setUser(null);
+      await refreshUserData();
     }
   };
 
-  const refreshUserCounts = async () => {
+  const refreshUserData = async () => {
     try {
-      const [w, p] = await Promise.all([getWishlist(), getPurchases()]);
-      // counts no longer shown on home; keep this for future use if needed
-      void w;
-      void p;
+      if (user) {
+        const h = await getSearchHistory({ limit: 10 });
+        setHistory(h.items || []);
+      } else {
+        const guestHistory = JSON.parse(localStorage.getItem('buysmart_guest_history') || '[]');
+        setHistory(guestHistory);
+      }
     } catch (_e) {
+      // Fallback to local on error
+      const guestHistory = JSON.parse(localStorage.getItem('buysmart_guest_history') || '[]');
+      setHistory(guestHistory);
     }
   };
 
@@ -93,6 +108,19 @@ function App() {
     } catch (error) {
       console.error('Error loading stats:', error);
     }
+  };
+
+  const handleFooterNavigate = (tab, searchQuery = '') => {
+    setActiveTab(tab);
+    if (searchQuery) {
+      handleSearch(searchQuery, {
+        minPrice: '',
+        maxPrice: '',
+        platforms: [],
+        minRating: ''
+      });
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSearch = async (query, searchFilters) => {
@@ -106,17 +134,34 @@ function App() {
     setFilters(searchFilters);
 
     try {
-      // If the query is new, this might take 10-15s due to Selenium
       const results = await searchProducts(query, searchFilters);
       setProducts(results.results || []);
 
       if (results.message) {
-        // Option to show a toast or alert if fallback occurred
         console.log(results.message);
       }
 
-      // Reload stats after search
-      await loadStats();
+      // Handle Guest History (if not logged in)
+      if (!user) {
+        const guestHistory = JSON.parse(localStorage.getItem('buysmart_guest_history') || '[]');
+        const newEntry = {
+          id: Date.now(),
+          query: query,
+          filters_json: JSON.stringify(searchFilters),
+          created_at: new Date().toISOString()
+        };
+        // Avoid duplicate consecutive searches
+        if (guestHistory[0]?.query !== query) {
+          const updatedHistory = [newEntry, ...guestHistory].slice(0, 10);
+          localStorage.setItem('buysmart_guest_history', JSON.stringify(updatedHistory));
+          setHistory(updatedHistory);
+        }
+      }
+
+      // Reload server-side content if logged in
+      if (user) {
+        await Promise.all([loadStats(), refreshUserData()]);
+      }
     } catch (error) {
       console.error('Error searching products:', error);
       alert('Error searching for products. Please try again.');
@@ -137,6 +182,18 @@ function App() {
     });
   };
 
+  const handleClearHistory = async () => {
+    try {
+      if (user) {
+        await clearSearchHistory();
+      }
+      localStorage.removeItem('buysmart_guest_history');
+      setHistory([]);
+    } catch (error) {
+      console.error('Error clearing history:', error);
+    }
+  };
+
   return (
     <div className="App">
       <Navbar
@@ -144,7 +201,7 @@ function App() {
         onAuthChange={async (u) => {
           setUser(u);
           if (u) {
-            await refreshUserCounts();
+            await refreshUserData();
           }
         }}
         onOpenSection={(id) => setActiveTab(id)}
@@ -167,6 +224,7 @@ function App() {
               onSearch={handleSearch}
               filters={filters}
               onClearFilters={handleClearFilters}
+              user={user}
             />
             {loading ? (
               <LoadingSpinner />
@@ -212,6 +270,7 @@ function App() {
         {activeTab === 'home' && (
           <div className="container tab-content">
             <HomePlatforms />
+            <Recommendations user={user} />
           </div>
         )}
 
@@ -220,6 +279,16 @@ function App() {
             <TrendingSection user={user} />
           </div>
         )}
+
+        <Footer 
+          onOpenFeedback={() => setFeedbackOpen(true)} 
+          onNavigate={handleFooterNavigate}
+        />
+        <FloatingFeedback 
+          isOpen={feedbackOpen} 
+          onToggle={setFeedbackOpen} 
+          user={user} 
+        />
       </div>
     </div>
   );

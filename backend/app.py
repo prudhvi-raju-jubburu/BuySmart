@@ -3,7 +3,7 @@ Flask application for Product Recommendation and Price Comparison System
 """
 from flask import Flask, request, jsonify, redirect
 from flask_cors import CORS
-from models import db, Product, ScrapingLog, User, SessionToken, WishlistItem, SearchEvent, ClickEvent, PurchaseEvent, PriceHistory, PriceDropAlert, RedirectToken
+from models import db, Product, ScrapingLog, User, SessionToken, WishlistItem, SearchEvent, ClickEvent, PurchaseEvent, PriceHistory, PriceDropAlert, RedirectToken, Feedback
 from scraper import ScraperManager
 from recommender import ProductRecommender
 from config import Config
@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.from_object(Config)
 # Enable CORS for React frontend
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}})
+CORS(app, resources={r"/api/*": {
+    "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+    "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
+    "supports_credentials": True
+}})
 
 db.init_app(app)
 scraper_manager = ScraperManager()
@@ -49,8 +53,13 @@ with app.app_context():
 
 def _get_bearer_token():
     auth = request.headers.get('Authorization', '')
+    if not auth:
+        return None
     if auth.lower().startswith('bearer '):
-        return auth.split(' ', 1)[1].strip()
+        token = auth.split(' ', 1)[1].strip()
+        logger.debug(f"Bearer token extracted: {token[:10]}...")
+        return token
+    logger.warning(f"Malformed Authorization header: {auth[:20]}...")
     return None
 
 def require_auth(fn):
@@ -58,10 +67,16 @@ def require_auth(fn):
     def wrapper(*args, **kwargs):
         token = _get_bearer_token()
         if not token:
+            logger.warning(f"Auth required but no token found in {request.path}")
             return jsonify({'error': 'Missing Authorization: Bearer <token>'}), 401
         session = SessionToken.query.filter_by(token=token).first()
-        if not session or not session.is_active():
-            return jsonify({'error': 'Invalid or expired token'}), 401
+        if not session:
+            logger.warning(f"Session not found for token in {request.path}")
+            return jsonify({'error': 'Invalid token'}), 401
+        if not session.is_active():
+            logger.warning(f"Session expired for user={session.user_id} in {request.path}")
+            return jsonify({'error': 'Expired token'}), 401
+            
         request.user = session.user  # lightweight attach
         request.session = session
         return fn(*args, **kwargs)
@@ -80,10 +95,13 @@ def get_optional_user():
     """Return user if Authorization header contains a valid token; else None."""
     token = _get_bearer_token()
     if not token:
+        logger.debug("Optional auth: no token found")
         return None
     session = SessionToken.query.filter_by(token=token).first()
     if not session or not session.is_active():
+        logger.debug(f"Optional auth: session invalid for token {token[:10]}...")
         return None
+    logger.debug(f"Optional auth: user={session.user.id} {session.user.email}")
     return session.user
 
 def scheduled_scraping():
@@ -133,6 +151,17 @@ def run_scheduler():
 # Start scheduler in background thread
 scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
 scheduler_thread.start()
+
+@app.before_request
+def log_request_info():
+    """Log every incoming API request for debugging"""
+    if request.path.startswith('/api'):
+        method = request.method
+        path = request.path
+        user_agent = request.headers.get('User-Agent', 'Unknown')
+        user = get_optional_user()
+        user_id = user.id if user else 'guest'
+        logger.info(f"API Request: {method} {path} | User: {user_id} | Agent: {user_agent[:50]}...")
 
 @app.route('/api')
 def api_info():
@@ -324,34 +353,32 @@ def search_products():
         
         logger.info(f"Real-time search for '{query}' across all platforms...")
         
-        # REAL-TIME: Fetch from platforms simultaneously (no DB)
-        requested = filters.get('platforms') or ['Amazon', 'Flipkart', 'Meesho', 'Myntra']
-        # Normalize to scraper keys
-        requested_keys = []
-        for p in requested:
-            if isinstance(p, str):
-                requested_keys.append(p.strip().lower())
-
-        api_platforms = ['meesho', 'myntra']
-        selenium_platforms = ['amazon', 'flipkart']
-
-        platforms_to_search = []
-        # Always include API platforms for fast & consistent results
-        for p in api_platforms:
-            if (not requested_keys) or (p in requested_keys):
-                platforms_to_search.append(p)
-
-        # Include Selenium platforms only if explicitly allowed (slower, can fail)
-        if include_live_scraping and Config.ENABLE_SELENIUM:
-            for p in selenium_platforms:
-                if (not requested_keys) or (p in requested_keys):
-                    platforms_to_search.append(p)
+        # CLASSIFY INTENT: Identify category focus
+        query_lower = query.lower()
+        electronics_set = {'laptop', 'phone', 'mobile', 'macbook', 'ipad', 'tablet', 'desktop', 'monitor', 'gpu', 'cpu', 'camera', 'tv'}
+        fashion_set = {'shirt', 'tshirt', 'pant', 'jeans', 'shoe', 'sneaker', 'dress', 'saree', 'kurti', 'jacket', 'hoodie', 'sweater', 'bag', 'backpack'}
         
-        # LOGIC CHANGE: If user didn't find anything from requested platforms, 
-        # or if they only asked for Selenium platforms (which often fail), 
-        # ensure we have something to search.
-        if not platforms_to_search:
-            platforms_to_search = api_platforms[:]
+        has_electronics = any(e in query_lower for e in electronics_set)
+        has_fashion = any(f in query_lower for f in fashion_set)
+        
+        # REAL-TIME: Fetch from platforms simultaneously (no DB)
+        requested_input = filters.get('platforms')
+        
+        if not requested_input:
+            # DYNAMIC ROUTING: If user hasn't specified platforms, route based on intent
+            if has_electronics and not has_fashion:
+                platforms_to_search = ['amazon', 'flipkart']
+                logger.info(f"Intent classified: ELECTRONICS. Routing to: {platforms_to_search}")
+            elif has_fashion and not has_electronics:
+                platforms_to_search = ['myntra', 'meesho', 'flipkart']
+                logger.info(f"Intent classified: FASHION. Routing to: {platforms_to_search}")
+            else:
+                platforms_to_search = ['amazon', 'flipkart', 'meesho', 'myntra']
+        else:
+            # Honor user's explicit platform choices
+            platforms_to_search = [p.strip().lower() for p in requested_input if isinstance(p, str)]
+            if not platforms_to_search:
+                platforms_to_search = ['amazon', 'flipkart', 'meesho', 'myntra']
 
         all_products = []
         
@@ -382,23 +409,39 @@ def search_products():
                 # overall timeout reached; proceed with what we have
                 pass
 
-        # De-duplicate by URL
+        # De-duplicate by URL and near-identical names
         deduped = []
         seen_urls = set()
+        seen_names = set()
         for p in all_products:
             url = p.get('product_url')
-            if not url or url in seen_urls:
+            name_key = re.sub(r'[^a-zA-Z0-9]', '', p.get('name', '').lower())[:30] # First 30 chars
+            if not url or url in seen_urls or name_key in seen_names:
                 continue
             seen_urls.add(url)
+            if len(name_key) > 5:
+                seen_names.add(name_key)
             deduped.append(p)
         all_products = deduped
+        
+        # Normalize filters to handle both camelCase (frontend) and snake_case (backend convention)
+        normalized_filters = {
+            'min_price': filters.get('min_price') if filters.get('min_price') is not None else filters.get('minPrice'),
+            'max_price': filters.get('max_price') if filters.get('max_price') is not None else filters.get('maxPrice'),
+            'min_rating': filters.get('min_rating') if filters.get('min_rating') is not None else filters.get('minRating'),
+            'platforms': filters.get('platforms') if filters.get('platforms') is not None else filters.get('platforms')
+        }
         
         # Apply filters
         # Note: We filter BEFORE ranking to speed up the recommender
         filtered_products = []
         # Normalize requested platforms for case-insensitive matching
-        requested_normalized = [p.lower() for p in (requested or [])]
+        requested_normalized = [p.lower() for p in (platforms_to_search or [])]
         
+        # Smart Relevance has been removed. We now trust the e-commerce platforms' native search engines 
+        # to return relevant products for generic queries (like 'mobiles' or 'laptops'), as product 
+        # titles for electronics often omit the category name (e.g. 'Apple iPhone 15' doesn't say 'mobile').
+        # The recommender engine will handle accessory penalties.
         for p in all_products:
             # Check if product is in the user's selected platforms (case-insensitive)
             p_platform = (p.get('platform') or '').lower()
@@ -406,16 +449,34 @@ def search_products():
                 continue
                 
             # Rating filter
-            if filters.get('min_rating') and (p.get('rating', 0) < float(filters['min_rating'])):
-                continue
+            min_rating = normalized_filters.get('min_rating')
+            if min_rating is not None and min_rating != '':
+                try:
+                    p_rating = float(p.get('rating') or 0)
+                    # Only exclude if we have a valid scrape (>0) and it's lower than requested.
+                    # Or treat 0.0 as unrated and let it pass to give the user options.
+                    if p_rating > 0 and p_rating < float(min_rating):
+                        continue
+                except (ValueError, TypeError):
+                    pass
                 
             # Price filter (with slight cushion for real-time volatility)
             p_price = p.get('price')
-            if p_price:
-                if filters.get('min_price') and p_price < float(filters['min_price']):
-                    continue
-                if filters.get('max_price') and p_price > float(filters['max_price']):
-                    continue
+            if p_price is not None:
+                try:
+                    p_price_float = float(p_price)
+                    
+                    min_price = normalized_filters.get('min_price')
+                    if min_price is not None and min_price != '':
+                        if p_price_float < float(min_price):
+                            continue
+                            
+                    max_price = normalized_filters.get('max_price')
+                    if max_price is not None and max_price != '':
+                        if p_price_float > float(max_price):
+                            continue
+                except (ValueError, TypeError):
+                    pass
             
             filtered_products.append(p)
         
@@ -427,46 +488,80 @@ def search_products():
             if 'id' not in p or not p.get('id'):
                 p['id'] = hash(p.get('product_url', f'product_{idx}')) % 1000000
         
-        final_results = ranked_products[:top_n]
-        
-        # FALLBACK: If Selenium platforms (Amazon/Flipkart) were requested but returned nothing, 
-        # try API platforms (Meesho/Myntra) silently to ensure user gets SOMETHING.
-        if not final_results and any(p in platforms_to_search for p in selenium_platforms):
-            logger.info(f"Primary search for '{query}' returned no results. Attempting fallback to API platforms...")
-            # If the user only searched specific platforms and got nothing, try API platforms as fallback
-            fallback_platforms = [p for p in api_platforms if p not in platforms_to_search]
-            if fallback_platforms:
-                fallback_products = []
-                for p in fallback_platforms:
-                    p_res = scraper_manager.scrape_platform_realtime(p, query, 15)
-                    if p_res:
-                        fallback_products.extend(p_res)
-                
-                if fallback_products:
-                    # re-rank with fallback products (ignoring strict platform filters to give user some options)
-                    final_results = recommender.rank_products_realtime(query, fallback_products, filters)[:10]
-                    logger.info(f"Fallback found {len(final_results)} items.")
+        # Return top 20 relevant products
+        final_results = ranked_products[:20]
 
-        # Store search history (optional user)
+        # Store search history (for logged-in users and guests via frontend)
         user = get_optional_user()
-        try:
-            event = SearchEvent(
-                user_id=user.id if user else None,
-                query=str(query)[:300],
-                filters_json=json.dumps(filters or {}),
-                results_count=len(final_results)
-            )
-            db.session.add(event)
-            db.session.commit()
-        except Exception as _e:
-            db.session.rollback()
+        if user:
+            try:
+                # Deduplicate: Avoid spamming identical searches
+                last_event = (db.session.query(SearchEvent)
+                             .filter(SearchEvent.user_id == user.id)
+                             .order_by(SearchEvent.created_at.desc())
+                             .first())
+                
+                if last_event and last_event.query == query:
+                    time_diff = (datetime.utcnow() - last_event.created_at).total_seconds()
+                    if time_diff < 10: # Reduced to 10s for better responsiveness
+                        logger.info(f"Skipping spam search history for user={user.id}")
+                        user = None # Treat as if we already handled it
+
+                if user:
+                    # Save with normalized filters for consistency
+                    event = SearchEvent(
+                        user_id=user.id,
+                        query=str(query)[:300],
+                        filters_json=json.dumps(normalized_filters),
+                        results_count=len(final_results)
+                    )
+                    db.session.add(event)
+                    db.session.commit()
+                    logger.info(f"Saved server search history for user={user.id} query='{query}' results={len(final_results)}")
+            except Exception as se:
+                logger.error(f"Failed to save history for user={user.id}: {se}")
+                db.session.rollback()
+        else:
+            logger.info(f"Search for '{query}' - local history handled by frontend")
         
+        # Implement cross-platform diversity (interleaving / round-robin)
+        # We group ranked products by platform and pick them in order.
+        # This prevents one platform from monopolizing the top 10 results simply
+        # due to having marginally higher ratings or scraper advantages.
+        max_results = 10
+        platform_groups = {}
+        
+        # Keep results ordered by their individual combined scores within their platform group
+        for p in ranked_products:
+            plat = p.get('platform', 'Unknown')
+            if plat not in platform_groups:
+                platform_groups[plat] = []
+            platform_groups[plat].append(p)
+            
+        final_results = []
+        
+        # Round robin extraction
+        while len(final_results) < max_results and any(platform_groups.values()):
+            # We want to pull from the 'strongest' platforms first if possible, 
+            # so we iterate through platforms sorted by the highest top score they provide
+            sorted_platforms = sorted(platform_groups.keys(), key=lambda k: platform_groups[k][0].get('combined_score', 0) if platform_groups[k] else 0, reverse=True)
+            
+            for plat in sorted_platforms:
+                if platform_groups[plat]:
+                    final_results.append(platform_groups[plat].pop(0))
+                if len(final_results) >= max_results:
+                    break
+        
+        active_platforms = list(set(p.get('platform', 'Unknown') for p in final_results))
+        
+        logger.info(f"Returning top {len(final_results)} interleaved products from {len(active_platforms)} platforms: {active_platforms}")
+
         return jsonify({
             'query': query,
             'count': len(final_results),
             'results': final_results,
             'sources': list(set(p.get('platform') for p in final_results)),
-            'message': 'No live deals found; showing best available deals.' if not any(p.get('platform').lower() in selenium_platforms for p in final_results) and include_live_scraping else None
+            'message': None if len(active_platforms) > 0 else "No products found on any platform."
         })
         
     except Exception as e:
@@ -480,12 +575,30 @@ def search_products():
 def get_search_history():
     """Get current user's search history"""
     limit = request.args.get('limit', 50, type=int)
-    events = (SearchEvent.query
+    
+    logger.info(f"Fetching search history for user={request.user.id} {request.user.email} (limit={limit})")
+    
+    events = (db.session.query(SearchEvent)
               .filter(SearchEvent.user_id == request.user.id)
               .order_by(SearchEvent.created_at.desc())
               .limit(min(limit, 200))
               .all())
-    return jsonify({'count': len(events), 'items': [e.to_dict() for e in events]})
+              
+    logger.info(f"Found {len(events)} search events for user={request.user.id}")
+    
+    return jsonify({
+        'status': 'success',
+        'count': len(events),
+        'items': [e.to_dict() for e in events]
+    })
+
+@app.route('/api/history/search', methods=['DELETE'])
+@require_auth
+def clear_search_history():
+    """Clear current user's search history"""
+    db.session.query(SearchEvent).filter(SearchEvent.user_id == request.user.id).delete()
+    db.session.commit()
+    return jsonify({'status': 'success'})
 
 @app.route('/api/wishlist', methods=['GET'])
 @require_auth
@@ -1035,6 +1148,26 @@ def admin_analytics():
         }
     })
 
+@app.route('/api/recommendations', methods=['GET'])
+def get_recommendations():
+    """Fetch top 20 recommended products from the database"""
+    try:
+        limit = request.args.get('limit', 20, type=int)
+        # Fetching products with rating 4.0+ and sorting by rating/review_count or existing recommendation_score
+        products = Product.query.filter(Product.rating >= 4.0).order_by(Product.recommendation_score.desc()).limit(limit).all()
+        
+        # If no scored products, just get high rated ones
+        if not products:
+             products = Product.query.filter(Product.rating >= 4.0).order_by(Product.rating.desc(), Product.review_count.desc()).limit(limit).all()
+
+        return jsonify({
+            'status': 'success',
+            'items': [p.to_dict() for p in products]
+        })
+    except Exception as e:
+        logger.error(f"Error fetching recommendations: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/recommendations/update-scores', methods=['POST'])
 def update_scores():
     """Update recommendation scores for all products"""
@@ -1043,6 +1176,56 @@ def update_scores():
         return jsonify({'status': 'success', 'message': 'Recommendation scores updated'})
     except Exception as e:
         logger.error(f"Error updating scores: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/feedback', methods=['GET'])
+def get_feedback():
+    """Fetch top feedbacks with 4+ stars for display in footer"""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        min_stars = request.args.get('min_stars', 4, type=int)
+        feedbacks = Feedback.query.filter(Feedback.rating >= min_stars).order_by(Feedback.created_at.desc()).limit(limit).all()
+        return jsonify({
+            'status': 'success',
+            'items': [f.to_dict() for f in feedbacks]
+        })
+    except Exception as e:
+        logger.error(f"Error fetching feedback: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/feedback', methods=['POST'])
+def add_feedback():
+    """Users submit feedback about the website"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+            
+        rating = data.get('rating')
+        description = data.get('description')
+        name = data.get('name', 'Anonymous')
+        
+        if not rating or not description:
+            return jsonify({'error': 'Rating and Description are required'}), 400
+            
+        user = get_optional_user()
+        new_feedback = Feedback(
+            user_id=user.id if user else None,
+            name=name if not user else user.name,
+            rating=int(rating),
+            description=description[:500]
+        )
+        
+        db.session.add(new_feedback)
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'success', 
+            'message': 'Thank you for your feedback!',
+            'item': new_feedback.to_dict()
+        })
+    except Exception as e:
+        logger.error(f"Error adding feedback: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
