@@ -1,6 +1,15 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const getApiBaseUrl = () => {
+  // If we're on localhost, always try to use the local backend
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return 'http://localhost:5000/api';
+  }
+  // Otherwise use the environment variable (for production)
+  return process.env.REACT_APP_API_URL || 'https://buysmart-8dkv.onrender.com/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -8,6 +17,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 });
+
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('buysmart_token');
