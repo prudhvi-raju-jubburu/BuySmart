@@ -29,11 +29,15 @@ CORS(app, resources={
         "origins": [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
-            "https://*.vercel.app"
+            "https://buy-smart-ashen.vercel.app",
+            "https://*.vercel.app",
+            "https://*.onrender.com"
         ],
         "supports_credentials": True
     }
 })
+
+
 
 @app.route("/")
 def home():
@@ -61,19 +65,26 @@ with app.app_context():
     try:
         db.create_all()
         logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
 
-        # Train recommender safely
+def run_bootstrap():
+    """Background task to bootstrap data if needed"""
+    with app.app_context():
         try:
-            recommender.train()
-        except Exception as e:
-            logger.warning(f"Recommender training skipped: {e}")
+            # Train recommender safely
+            try:
+                recommender.train()
+                logger.info("Initial recommender training completed")
+            except Exception as e:
+                logger.warning(f"Recommender training skipped: {e}")
 
-        # Bootstrap data if needed
-        try:
+            # Bootstrap data if needed
             existing_count = Product.query.count()
             if existing_count < 10:
-                logger.info("Bootstrapping initial data...")
-                for q in ['laptop', 'phone', 'headphones']:
+                logger.info("Bootstrapping initial data in background...")
+                bootstrap_queries = ['laptop', 'phone', 'headphones']
+                for q in bootstrap_queries:
                     try:
                         scraper_manager.scrape_platform('meesho', query=q, max_results=10)
                         scraper_manager.scrape_platform('myntra', query=q, max_results=10)
@@ -82,13 +93,15 @@ with app.app_context():
 
                 try:
                     recommender.train()
+                    logger.info("Post-bootstrap recommender training completed")
                 except:
                     pass
         except Exception as e:
-            logger.error(f"Error checking product count: {e}")
+            logger.error(f"Bootstrap error: {e}")
 
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
+# Start bootstrap in background thread
+threading.Thread(target=run_bootstrap, daemon=True).start()
+
 
 
 def _get_bearer_token():
