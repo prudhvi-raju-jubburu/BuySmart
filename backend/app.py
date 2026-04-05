@@ -24,11 +24,33 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.from_object(Config)
 # Enable CORS for React frontend
-CORS(app, resources={r"/api/*": {
-    "origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
-    "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Credentials"],
-    "supports_credentials": True
-}})
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://*.vercel.app"
+        ],
+        "supports_credentials": True
+    }
+})
+
+@app.route("/")
+def home():
+    return jsonify({
+        "status": "success",
+        "message": "BuySmart Backend is Running 🚀"
+    })
+
+
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "ok",
+        "service": "BuySmart API",
+        "time": datetime.utcnow().isoformat()
+    })
+
 
 db.init_app(app)
 scraper_manager = ScraperManager()
@@ -36,20 +58,38 @@ recommender = ProductRecommender()
 
 # Initialize database
 with app.app_context():
-    db.create_all()
-    # Train recommender on startup
-    recommender.train()
-    # Bootstrap some fresh API data if DB is nearly empty
     try:
-        existing_count = Product.query.count()
-        if existing_count < 10:
-            bootstrap_queries = ['laptop', 'phone', 'headphones']
-            for q in bootstrap_queries:
-                scraper_manager.scrape_platform('meesho', query=q, max_results=20)
-                scraper_manager.scrape_platform('myntra', query=q, max_results=20)
+        db.create_all()
+        logger.info("Database initialized successfully")
+
+        # Train recommender safely
+        try:
             recommender.train()
-    except Exception:
-        pass
+        except Exception as e:
+            logger.warning(f"Recommender training skipped: {e}")
+
+        # Bootstrap data if needed
+        try:
+            existing_count = Product.query.count()
+            if existing_count < 10:
+                logger.info("Bootstrapping initial data...")
+                for q in ['laptop', 'phone', 'headphones']:
+                    try:
+                        scraper_manager.scrape_platform('meesho', query=q, max_results=10)
+                        scraper_manager.scrape_platform('myntra', query=q, max_results=10)
+                    except Exception as e:
+                        logger.warning(f"Bootstrap failed for {q}: {e}")
+
+                try:
+                    recommender.train()
+                except:
+                    pass
+        except Exception as e:
+            logger.error(f"Error checking product count: {e}")
+
+    except Exception as e:
+        logger.error(f"Startup error: {e}")
+
 
 def _get_bearer_token():
     auth = request.headers.get('Authorization', '')
@@ -148,9 +188,14 @@ def run_scheduler():
         schedule.run_pending()
         time.sleep(60)  # Check every minute
 
-# Start scheduler in background thread
-scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-scheduler_thread.start()
+def start_scheduler():
+    if not app.debug:
+        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+        scheduler_thread.start()
+        logger.info("Scheduler started")
+
+start_scheduler()
+
 
 @app.before_request
 def log_request_info():
@@ -1228,7 +1273,18 @@ def add_feedback():
         logger.error(f"Error adding feedback: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Route not found"}), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"error": "Internal server error"}), 500
+
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True)
+
 
 
