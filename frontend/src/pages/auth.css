@@ -1,0 +1,447 @@
+/* ================================================================
+   auth.css — Shared styles for LoginPage and RegisterPage
+   Full-screen split layout: branding left | form right
+   Fully responsive: stacks vertically on mobile
+   Dark + light theme compatible
+   ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+/* ── Page Shell ──────────────────────────────────────────────────── */
+.auth-page {
+  height: 100vh;
+  display: flex;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: var(--bg-color, #0a0a0c);
+  color: var(--text-main, #f8fafc);
+  overflow-y: auto;
+}
+
+/* ── Branding Panel (left) ───────────────────────────────────────── */
+.auth-brand {
+  flex: 0 0 420px;
+  background: linear-gradient(145deg, #5b21b6 0%, #7c3aed 40%, #a855f7 70%, #ec4899 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 3rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 40%, rgba(255,255,255,0.12) 0%, transparent 50%),
+              radial-gradient(circle at 80% 80%, rgba(0,0,0,0.15) 0%, transparent 40%);
+}
+
+.auth-brand-content {
+  position: relative;
+  z-index: 1;
+}
+
+.auth-brand-logo {
+  font-size: 2rem;
+  font-weight: 800;
+  color: white;
+  letter-spacing: -0.03em;
+  margin-bottom: 1.5rem;
+}
+
+.auth-brand-logo span {
+  opacity: 0.75;
+  font-weight: 400;
+}
+
+.auth-brand-tagline {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: white;
+  line-height: 1.3;
+  margin-bottom: 1rem;
+}
+
+.auth-brand-sub {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.6;
+  max-width: 300px;
+}
+
+.auth-brand-features {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-brand-feature {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.auth-brand-feature-icon {
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+/* ── Form Panel (right) ──────────────────────────────────────────── */
+.auth-form-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  min-height: 100%;
+}
+
+.auth-form-card {
+  width: 100%;
+  max-width: 460px;
+}
+
+.auth-form-title {
+  font-size: 1.85rem;
+  font-weight: 800;
+  color: var(--text-main, #f8fafc);
+  margin-bottom: 0.4rem;
+  letter-spacing: -0.02em;
+}
+
+.auth-form-subtitle {
+  font-size: 0.95rem;
+  color: var(--text-dim, #94a3b8);
+  margin-bottom: 1rem;
+}
+
+/* ── Form Fields ─────────────────────────────────────────────────── */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.auth-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-dim, #94a3b8);
+  letter-spacing: 0.01em;
+}
+
+.auth-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  background: var(--glass, rgba(255,255,255,0.05));
+  border: 1.5px solid var(--glass-border, rgba(255,255,255,0.1));
+  border-radius: 12px;
+  color: var(--text-main, #f8fafc);
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  -webkit-appearance: none;
+}
+
+.auth-input::placeholder {
+  color: var(--text-dim, #64748b);
+  opacity: 0.6;
+}
+
+.auth-input:focus {
+  border-color: var(--primary, #8b5cf6);
+  background: rgba(139, 92, 246, 0.05);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}
+
+.auth-input.input-error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.04);
+}
+
+.auth-input.input-success {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.04);
+}
+
+/* Password toggle button */
+.auth-input-wrap .pw-toggle {
+  position: absolute;
+  right: 0.75rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim, #94a3b8);
+  display: flex;
+  align-items: center;
+  padding: 0.25rem;
+  transition: color 0.2s;
+  z-index: 1;
+}
+.auth-input-wrap .pw-toggle:hover {
+  color: var(--primary, #8b5cf6);
+}
+
+/* when password field has toggle, add right padding */
+.auth-input.has-toggle {
+  padding-right: 2.75rem;
+}
+
+/* ── Inline Error / Success Messages ────────────────────────────── */
+.auth-field-msg {
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.1em;
+}
+.auth-field-msg.error { color: #ef4444; }
+.auth-field-msg.success { color: #10b981; }
+
+/* ── Error Banner (form-level) ───────────────────────────────────── */
+.auth-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #fca5a5;
+  animation: fadeInDown 0.25s ease;
+}
+.light-theme .auth-error-banner {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.07);
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Password Strength Meter ─────────────────────────────────────── */
+.pw-strength-wrap {
+  margin-top: 0.25rem;
+}
+
+.pw-strength-bar-track {
+  height: 5px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+}
+.light-theme .pw-strength-bar-track { background: rgba(0,0,0,0.08); }
+
+.pw-strength-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease, background-color 0.4s ease;
+}
+
+.pw-strength-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.pw-rules {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem 0.5rem;
+}
+
+.pw-rule {
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text-dim, #94a3b8);
+  transition: color 0.2s;
+}
+.pw-rule.rule-ok { color: #10b981; }
+.pw-rule .rule-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+/* ── Confirm Password Match Indicator ────────────────────────────── */
+.confirm-pw-match {
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.confirm-pw-match.match { color: #10b981; }
+.confirm-pw-match.mismatch { color: #ef4444; }
+
+/* ── Remember Me + Forgot Password row ──────────────────────────── */
+.auth-extras {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.auth-remember {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-dim, #94a3b8);
+  cursor: pointer;
+  user-select: none;
+}
+
+.auth-remember input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary, #8b5cf6);
+  cursor: pointer;
+}
+
+.auth-forgot {
+  color: var(--primary, #8b5cf6);
+  font-weight: 600;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  transition: opacity 0.2s;
+}
+.auth-forgot:hover { opacity: 0.75; }
+
+/* ── Submit Button ───────────────────────────────────────────────── */
+.auth-submit-btn {
+  width: 100%;
+  padding: 0.8rem;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+.auth-submit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(139, 92, 246, 0.55);
+}
+.auth-submit-btn:active:not(:disabled) { transform: translateY(0); }
+.auth-submit-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Spinner inside button */
+.btn-spinner {
+  width: 18px; height: 18px;
+  border: 2.5px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Switch link (Login ↔ Register) ─────────────────────────────── */
+.auth-switch {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: var(--text-dim, #94a3b8);
+}
+.auth-switch-btn {
+  background: none;
+  border: none;
+  color: var(--primary, #8b5cf6);
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0 0.2rem;
+  transition: opacity 0.2s;
+}
+.auth-switch-btn:hover { opacity: 0.75; }
+
+/* ── Light theme field overrides ─────────────────────────────────── */
+.light-theme .auth-input {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #0f172a;
+}
+.light-theme .auth-input:focus {
+  border-color: var(--primary, #8b5cf6);
+  background: rgba(139, 92, 246, 0.03);
+}
+.light-theme .auth-input::placeholder { color: #94a3b8; }
+.light-theme .pw-strength-bar-track { background: rgba(0,0,0,0.08); }
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .auth-brand { display: none; }
+  .auth-form-panel { padding: 2rem 1.25rem; }
+}
+
+@media (max-width: 480px) {
+  .auth-form-panel { padding: 1.5rem 1rem; min-height: 100%; }
+  .auth-form-title { font-size: 1.5rem; }
+  .pw-rules { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .auth-input,
+  .auth-submit-btn {
+    min-height: 48px !important;
+    box-sizing: border-box;
+  }
+  .auth-input-wrap .pw-toggle {
+    height: 48px;
+    display: flex;
+    align-items: center;
+  }
+}

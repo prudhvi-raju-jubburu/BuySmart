@@ -1,0 +1,109 @@
+.toast-container {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 320px;
+  width: calc(100vw - 2.5rem);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: inherit;
+  pointer-events: all;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              opacity 0.35s ease;
+}
+
+/* Entry / Exit animations */
+.toast-exit {
+  transform: translateX(120%);
+  opacity: 0;
+}
+.toast-enter {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+/* Type variants */
+.toast-success {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #065f46;
+}
+.light-theme .toast-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: #065f46;
+}
+/* Dark mode success */
+body:not(.light-theme) .toast-success {
+  color: #6ee7b7;
+}
+
+.toast-error {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #991b1b;
+}
+body:not(.light-theme) .toast-error {
+  color: #fca5a5;
+}
+
+.toast-warning {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #92400e;
+}
+body:not(.light-theme) .toast-warning {
+  color: #fcd34d;
+}
+
+.toast-info {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.3);
+  color: #3730a3;
+}
+body:not(.light-theme) .toast-info {
+  color: #a5b4fc;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.5;
+  padding: 0.1rem;
+  display: flex;
+  align-items: center;
+  color: inherit;
+  transition: opacity 0.2s;
+}
+.toast-close:hover {
+  opacity: 1;
+}

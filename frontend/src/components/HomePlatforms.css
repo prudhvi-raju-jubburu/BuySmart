@@ -1,0 +1,76 @@
+.home-platforms {
+  margin: 3rem 0;
+  padding: 3rem;
+  border-radius: 32px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  animation: fadeIn 0.8s ease-out;
+}
+
+.home-title {
+  font-weight: 800;
+  color: var(--text-main);
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.home-subtitle {
+  margin-top: 0.75rem;
+  color: var(--text-dim);
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.platform-grid {
+  margin-top: 2.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.platform-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2rem;
+  border-radius: 24px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  text-decoration: none;
+  color: inherit;
+  transition: var(--transition);
+}
+
+.platform-card:hover {
+  transform: translateY(-8px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--primary);
+  box-shadow: var(--card-shadow);
+}
+
+.platform-badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  color: white;
+  font-weight: 800;
+  font-size: 0.85rem;
+  align-self: flex-start;
+}
+
+.platform-sub {
+  margin-top: 1.5rem;
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.platform-cta {
+  margin-top: 1.5rem;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}

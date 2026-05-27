@@ -1,0 +1,113 @@
+.ticker-container {
+    width: 100%;
+    height: 40px;
+    background: rgba(139, 92, 246, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--glass-border);
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    position: relative;
+    z-index: 99;
+}
+
+.ticker-wrapper {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    /* Elegant gradient fade effect on both edges of the scrolling text */
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0%, #000 6%, #000 94%, transparent 100%);
+}
+
+.ticker-content {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    animation: ticker-scrolling 55s linear infinite;
+    will-change: transform;
+}
+
+.ticker-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-main);
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.ticker-icon {
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+}
+
+.ticker-label-text {
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.ticker-desc {
+    color: var(--text-dim);
+    font-weight: 500;
+}
+
+.ticker-separator {
+    margin: 0 2.5rem;
+    color: var(--primary);
+    opacity: 0.35;
+    font-size: 0.7rem;
+    display: inline-block;
+    user-select: none;
+}
+
+@keyframes ticker-scrolling {
+    0% {
+        transform: translate3d(0, 0, 0);
+    }
+    100% {
+        transform: translate3d(-50%, 0, 0);
+    }
+}
+
+.ticker-container:hover .ticker-content {
+    animation-play-state: paused;
+}
+
+.light-theme .ticker-container {
+    background: rgba(139, 92, 246, 0.04);
+}
+
+.light-theme .ticker-label-text {
+    color: var(--primary-hover);
+}
+
+.light-theme .ticker-separator {
+    color: var(--primary-hover);
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .ticker-container {
+        height: 34px;
+    }
+
+    .ticker-item {
+        font-size: 0.78rem;
+        gap: 0.35rem;
+    }
+
+    .ticker-icon {
+        font-size: 0.85rem;
+    }
+
+    .ticker-separator {
+        margin: 0 1.5rem;
+        font-size: 0.6rem;
+    }
+}

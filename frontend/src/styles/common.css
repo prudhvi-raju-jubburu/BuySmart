@@ -1,0 +1,236 @@
+/* Container Layouts */
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    padding: 16px;
+  }
+}
+
+/* Glassmorphism Panel */
+.glass-panel {
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0c;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 5px;
+  border: 2px solid #0a0a0c;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* Keyframes & Animations */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 0 0 var(--primary);
+  }
+  70% {
+    box-shadow: 0 0 0 15px rgba(139, 92, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translate(-50%, 100px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Page Header Card Design Unification */
+.page-header-card {
+  background: var(--card-bg);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--space-xl);
+  margin-bottom: var(--space-xl);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+.page-title {
+  font-size: var(--font-page-title);
+  font-weight: 800;
+  color: var(--text-color);
+  margin: 0 0 var(--space-xs) 0;
+  letter-spacing: -0.02em;
+}
+
+.page-subtitle {
+  font-size: var(--font-body);
+  color: var(--text-dim);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.light-theme .page-header-card {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ===== Website Animations & Mobile Compatibility Enhancements ===== */
+
+/* Page & Card Fade In Slide Up Animation */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* Page fade-in-up transition wrappers */
+.search-page-container,
+.profile-page,
+.dashboard-page,
+.admin-dashboard-container,
+.home-page-container {
+  animation: fadeInUp 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* Card Hover Scale & Glow Transitions */
+.product-card, 
+.profile-card, 
+.dashboard-section-card, 
+.admin-content-card, 
+.admin-kpi-card, 
+.wish-product-card,
+.recent-product-wrapper {
+  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), 
+              box-shadow 0.4s cubic-bezier(0.25, 1, 0.5, 1), 
+              border-color 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.product-card:hover, 
+.profile-card:hover, 
+.dashboard-section-card:hover, 
+.admin-content-card:hover,
+.admin-kpi-card:hover,
+.wish-product-card:hover,
+.recent-product-wrapper:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: var(--shadow-premium-hover);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+/* Theme Toggle transition smoothing */
+body, 
+.navbar, 
+.navbar-inner,
+.nav-mobile-menu,
+.page-header-card,
+input, 
+select, 
+textarea,
+button {
+  transition: background-color 0.3s ease, 
+              border-color 0.3s ease, 
+              color 0.25s ease, 
+              box-shadow 0.3s ease,
+              transform 0.2s ease;
+}
+
+/* Pulse Glow animation for main buttons */
+@keyframes pulseGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(139, 92, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+.pulse-glow {
+  animation: pulseGlow 2.5s infinite;
+}
+
+.hero-search-btn, 
+.view-deal-btn, 
+.profile-save-btn,
+.nav-mobile-primary {
+  animation: pulseGlow 3s infinite;
+}
+
+/* Interactive Scale down for button clicks */
+button:active, 
+.navbtn:active, 
+.view-deal-btn:active, 
+.profile-save-btn:active {
+  transform: scale(0.96) !important;
+}
+
+/* Input Focus Glow Micro-interactions */
+input:focus, 
+select:focus, 
+textarea:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15) !important;
+  background: rgba(139, 92, 246, 0.02) !important;
+}
+
+.light-theme input:focus, 
+.light-theme select:focus, 
+.light-theme textarea:focus {
+  background: rgba(139, 92, 246, 0.01) !important;
+}
+
