@@ -37,7 +37,7 @@ const SearchPage = ({
       {loading ? (
         <div className="skeleton-grid-container" style={{ width: '100%', marginTop: '2rem' }}>
           <div className="results-count" style={{ marginBottom: '1.5rem', color: 'var(--text-dim)', fontSize: '0.9rem', fontWeight: '600' }}>
-            <span>Finding the best deals for you...</span>
+            <span>Initializing live product scanners...</span>
           </div>
           <div className="product-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '2rem' }}>
             {[...Array(8)].map((_, i) => (
@@ -77,6 +77,7 @@ const SearchPage = ({
             selectedProducts={selectedProducts}
             onToggleSelect={onToggleSelect}
             isAi={searchResult && searchResult.is_ai}
+            platformStatus={searchResult && searchResult.platform_status}
           />
         </>
       )}

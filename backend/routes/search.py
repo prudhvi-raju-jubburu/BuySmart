@@ -119,6 +119,11 @@ def handle_ai_search_pipeline(query, filters, user):
     platform = intent.get('platform')
     rating = intent.get('rating')
     
+    platforms_to_search = ['amazon', 'flipkart', 'meesho', 'myntra']
+    if platform:
+        platforms_to_search = [platform.lower()]
+    platform_status = {p: "success" for p in platforms_to_search}
+    
     db_query = db.session.query(Product).filter(Product.price.isnot(None), Product.price > 0)
     if category:
         cat_lower = category.lower().strip()
@@ -171,30 +176,33 @@ def handle_ai_search_pipeline(query, filters, user):
     
     # Platform scraper fallback if local products < 10
     if len(products_list) < 10:
-        platforms_to_search = ['amazon', 'flipkart', 'meesho', 'myntra']
-        if platform:
-            platforms_to_search = [platform.lower()]
-            
         def fetch_platform(plat):
-            try:
-                return scraper_manager.scrape_platform_realtime(plat, rewritten_q, 15)
-            except Exception as exc:
-                logger.error(f"Scraper error for {plat}: {exc}")
-                return []
+            return scraper_manager.scrape_platform_realtime(plat, rewritten_q, 15)
                 
         scraped_results = []
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(platforms_to_search)) as executor:
                 futures = {executor.submit(fetch_platform, p): p for p in platforms_to_search}
-                for fut in concurrent.futures.as_completed(futures, timeout=Config.REALTIME_PLATFORM_TIMEOUT_SEC):
-                    plat = futures[fut]
-                    try:
-                        scraped = fut.result()
-                        scraped_results.extend(scraped or [])
-                    except Exception as exc:
-                        logger.error(f"Scraper failure on {plat}: {exc}")
-        except concurrent.futures.TimeoutError:
-            logger.warning("AI search platform scraping reached overall timeout.")
+                try:
+                    for fut in concurrent.futures.as_completed(futures, timeout=Config.REALTIME_PLATFORM_TIMEOUT_SEC):
+                        plat = futures[fut]
+                        try:
+                            scraped = fut.result()
+                            scraped_results.extend(scraped or [])
+                        except concurrent.futures.TimeoutError:
+                            logger.error(f"Scraper timeout on {plat}")
+                            platform_status[plat] = "timeout"
+                        except Exception as exc:
+                            logger.error(f"Scraper failure on {plat}: {exc}", exc_info=True)
+                            platform_status[plat] = "failed"
+                except concurrent.futures.TimeoutError:
+                    logger.warning("AI search platform scraping reached overall timeout.")
+                    for fut, plat in futures.items():
+                        if not fut.done():
+                            platform_status[plat] = "timeout"
+                            fut.cancel()
+        except Exception as e:
+            logger.error(f"Error in ThreadPoolExecutor: {e}", exc_info=True)
                 
         seen_urls = {p.get('product_url', '').lower() for p in products_list}
         for sp in scraped_results:
@@ -253,7 +261,8 @@ def handle_ai_search_pipeline(query, filters, user):
         "products": final_results,
         "results": final_results,
         "alternative_products": [],
-        "suggested_queries": intent.get('refinements', [])
+        "suggested_queries": intent.get('refinements', []),
+        "platform_status": platform_status
     }
 
 def handle_keyword_search_pipeline(query, filters, user):
@@ -279,15 +288,8 @@ def handle_keyword_search_pipeline(query, filters, user):
             platforms_to_search = ['amazon', 'flipkart', 'meesho', 'myntra']
             
     all_products = []
+    platform_status = {p: "success" for p in platforms_to_search}
     
-    def fetch_platform(platform_name):
-        try:
-            products = scraper_manager.scrape_platform_realtime(platform_name, query, 20)
-            return products or []
-        except Exception as e:
-            logger.error(f"Error fetching from {platform_name}: {e}")
-            return []
-            
     # Search local database first
     local_products = []
     words = query_lower.split()
@@ -325,26 +327,32 @@ def handle_keyword_search_pipeline(query, filters, user):
     # Run scrapers as fallback/supplement if local products < 10
     if len(all_products) < 10:
         def fetch_platform(platform_name):
-            try:
-                products = scraper_manager.scrape_platform_realtime(platform_name, query, 20)
-                return products or []
-            except Exception as e:
-                logger.error(f"Error fetching from {platform_name}: {e}")
-                return []
+            return scraper_manager.scrape_platform_realtime(platform_name, query, 20)
                 
         scraped_results = []
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(platforms_to_search))) as executor:
                 futures = {executor.submit(fetch_platform, p): p for p in platforms_to_search}
-                for future in concurrent.futures.as_completed(futures, timeout=Config.REALTIME_PLATFORM_TIMEOUT_SEC):
-                    platform = futures[future]
-                    try:
-                        products = future.result()
-                        scraped_results.extend(products or [])
-                    except Exception as e:
-                        logger.error(f"Platform {platform} failure: {e}")
-        except concurrent.futures.TimeoutError:
-            logger.warning("Keyword search platform scraping reached overall timeout.")
+                try:
+                    for future in concurrent.futures.as_completed(futures, timeout=Config.REALTIME_PLATFORM_TIMEOUT_SEC):
+                        platform = futures[future]
+                        try:
+                            products = future.result()
+                            scraped_results.extend(products or [])
+                        except concurrent.futures.TimeoutError:
+                            logger.error(f"Scraper timeout on {platform}")
+                            platform_status[platform] = "timeout"
+                        except Exception as e:
+                            logger.error(f"Platform {platform} failure: {e}", exc_info=True)
+                            platform_status[platform] = "failed"
+                except concurrent.futures.TimeoutError:
+                    logger.warning("Keyword search platform scraping reached overall timeout.")
+                    for future, platform in futures.items():
+                        if not future.done():
+                            platform_status[platform] = "timeout"
+                            future.cancel()
+        except Exception as e:
+            logger.error(f"Error in ThreadPoolExecutor: {e}", exc_info=True)
             
         seen_urls = {p.get('product_url', '').lower() for p in all_products}
         for sp in scraped_results:
@@ -455,7 +463,8 @@ def handle_keyword_search_pipeline(query, filters, user):
         "products": interleaved_results,
         "results": interleaved_results,
         "alternative_products": [],
-        "suggested_queries": []
+        "suggested_queries": [],
+        "platform_status": platform_status
     }
 
 @search_bp.route('/api/search', methods=['GET', 'POST'])

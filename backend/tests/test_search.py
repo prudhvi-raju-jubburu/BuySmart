@@ -92,3 +92,59 @@ def test_ai_search_intent_extraction(mock_post, client):
     assert intent["category"] == "Laptop"
     assert intent["budget_max"] == 60000.0
     assert intent["brand"] == "Lenovo"
+
+
+# --- Resilient Search Pipeline & Scraper Error Handling Tests ---
+
+@patch('routes.search.scraper_manager.scrape_platform_realtime')
+def test_search_partial_scraper_failure(mock_scrape, client):
+    # Mock scrape_platform_realtime: Amazon succeeds but Flipkart raises error
+    def scrape_side_effect(platform, query, max_results):
+        if platform == "amazon":
+            return [{
+                "id": 1,
+                "name": "Amazon Laptop",
+                "price": 50000.0,
+                "platform": "Amazon",
+                "product_url": "http://amazon.com/l1"
+            }]
+        else:
+            raise RuntimeError(f"Simulated scraper failure on {platform}")
+
+    mock_scrape.side_effect = scrape_side_effect
+
+    # We make sure that local database has less than 10 products so that scraper fallback runs
+    res = client.post('/api/search', json={
+        "query": "Laptop",
+        "filters": {"platforms": ["amazon", "flipkart"]}
+    })
+    assert res.status_code == 200
+    data = json.loads(res.data)
+    assert data['success'] is True
+    # platform_status should contain success for amazon and failed for flipkart
+    assert data['platform_status']['amazon'] == 'success'
+    assert data['platform_status']['flipkart'] == 'failed'
+    assert len(data['results']) > 0
+
+@patch('routes.search.scraper_manager.scrape_platform_realtime')
+def test_search_total_scraper_failure(mock_scrape, client):
+    # Mock scrape_platform_realtime: all platforms fail
+    mock_scrape.side_effect = RuntimeError("All scrapers offline")
+
+    # Let's clear the local database products to simulate zero local results and total scraper failure
+    with app.app_context():
+        db.session.query(Product).delete()
+        db.session.commit()
+
+    res = client.post('/api/search', json={
+        "query": "Laptop",
+        "filters": {"platforms": ["amazon", "flipkart", "meesho", "myntra"]}
+    })
+    assert res.status_code == 200
+    data = json.loads(res.data)
+    assert data['success'] is True
+    assert len(data['results']) == 0
+    assert data['platform_status']['amazon'] == 'failed'
+    assert data['platform_status']['flipkart'] == 'failed'
+    assert data['platform_status']['meesho'] == 'failed'
+    assert data['platform_status']['myntra'] == 'failed'

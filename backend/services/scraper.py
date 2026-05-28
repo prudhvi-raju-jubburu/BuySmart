@@ -31,9 +31,15 @@ def get_chromedriver_path():
     if CHROMEDRIVER_PATH is None:
         with chromedriver_lock:
             if CHROMEDRIVER_PATH is None:
-                logger.info("Initializing ChromeDriver path using ChromeDriverManager...")
-                CHROMEDRIVER_PATH = ChromeDriverManager().install()
-                logger.info(f"ChromeDriver path initialized: {CHROMEDRIVER_PATH}")
+                import os
+                sys_driver = "/usr/bin/chromedriver"
+                if os.path.exists(sys_driver):
+                    CHROMEDRIVER_PATH = sys_driver
+                    logger.info(f"Using system ChromeDriver: {CHROMEDRIVER_PATH}")
+                else:
+                    logger.info("Initializing ChromeDriver path using ChromeDriverManager...")
+                    CHROMEDRIVER_PATH = ChromeDriverManager().install()
+                    logger.info(f"ChromeDriver path initialized: {CHROMEDRIVER_PATH}")
     return CHROMEDRIVER_PATH
 
 class BaseScraper:
@@ -110,16 +116,28 @@ class SeleniumScraper(BaseScraper):
         self.driver = None
 
     def _setup_driver(self):
+        logger.info("Initializing Chromium WebDriver...")
         options = ChromeOptions()
-        options.add_argument("--headless=new") 
-        options.add_argument("--disable-gpu")
+        
+        # Headless container configuration
+        options.add_argument("--headless") 
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--start-maximized")
+        
+        # Check if running in Linux (e.g. Render) where Chromium is installed at /usr/bin/chromium
+        import os
+        chromium_path = "/usr/bin/chromium"
+        if os.path.exists(chromium_path):
+            options.binary_location = chromium_path
+            logger.info(f"Setting Chrome binary location to: {chromium_path}")
+            
         # Ensure we always get a desktop layout by hardcoding a modern desktop User-Agent
         desktop_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         options.add_argument(f"user-agent={desktop_ua}")
+        
         # Mask automation
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -128,9 +146,16 @@ class SeleniumScraper(BaseScraper):
         try:
             path = get_chromedriver_path()
             self.driver = webdriver.Chrome(service=ChromeService(path), options=options)
+            self.driver.set_page_load_timeout(30)
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            logger.info("Chromium WebDriver initialized successfully.")
         except Exception as e:
-            logger.error(f"Failed to initialize Chrome driver: {e}")
+            logger.error("Chrome initialization failed", exc_info=True)
+            if self.driver:
+                try:
+                    self.driver.quit()
+                except:
+                    pass
             self.driver = None
 
     def _teardown_driver(self):
@@ -173,13 +198,15 @@ class AmazonScraper(SeleniumScraper):
     
     def search_products(self, query, max_results=10):
         """Search for products on Amazon using Selenium"""
+        logger.info(f"Starting Amazon scraper for query: {query}")
+        start_time = time.time()
         search_url = f"https://www.amazon.in/s?k={query.replace(' ', '+')}"
 
         products = []
         try:
             source = self.get_page_source_selenium(search_url)
             if not source:
-                return []
+                raise RuntimeError("Failed to retrieve page source from Amazon.")
 
             soup = BeautifulSoup(source, 'lxml')
 
@@ -249,8 +276,10 @@ class AmazonScraper(SeleniumScraper):
                     logger.debug(f"Error parsing Amazon item: {e}")
                     continue
 
+            logger.info(f"Amazon products scraped: {len(products)} (Duration: {time.time() - start_time:.2f}s)")
         except Exception as e:
-            logger.error(f"Error searching Amazon: {str(e)}")
+            logger.error("Amazon scraper failure", exc_info=True)
+            raise e
         finally:
             self._teardown_driver()
 
@@ -264,13 +293,15 @@ class FlipkartScraper(SeleniumScraper):
         self.platform = "Flipkart"
     
     def search_products(self, query, max_results=15):
+        logger.info(f"Starting Flipkart scraper for query: {query}")
+        start_time = time.time()
         search_url = f"https://www.flipkart.com/search?q={query.replace(' ', '+')}"
         products = []
         try:
             logger.info(f"Opening Flipkart Search: {search_url}")
             source = self.get_page_source_selenium(search_url)
             if not source:
-                return []
+                raise RuntimeError("Failed to retrieve page source from Flipkart.")
                 
             soup = BeautifulSoup(source, 'lxml')
             
@@ -357,8 +388,10 @@ class FlipkartScraper(SeleniumScraper):
                 except Exception as e:
                     logger.debug(f"Flipkart extraction sub-error: {e}")
                     continue
+            logger.info(f"Flipkart products scraped: {len(products)} (Duration: {time.time() - start_time:.2f}s)")
         except Exception as e:
-            logger.error(f"Flipkart Scraper error: {e}")
+            logger.error("Flipkart scraper failure", exc_info=True)
+            raise e
         finally:
             self._teardown_driver()
             
@@ -371,13 +404,15 @@ class MeeshoScraper(SeleniumScraper):
         self.platform = "Meesho"
 
     def search_products(self, query, max_results=15):
+        logger.info(f"Starting Meesho scraper for query: {query}")
+        start_time = time.time()
         search_url = f"https://www.meesho.com/search?q={query.replace(' ', '%20')}"
         products = []
         try:
             logger.info(f"Opening Meesho Search: {search_url}")
             source = self.get_page_source_selenium(search_url)
             if not source:
-                return []
+                raise RuntimeError("Failed to retrieve page source from Meesho.")
             
             soup = BeautifulSoup(source, 'lxml')
             
@@ -449,8 +484,10 @@ class MeeshoScraper(SeleniumScraper):
                         'availability': 'In Stock'
                     })
                 except Exception: continue
+            logger.info(f"Meesho products scraped: {len(products)} (Duration: {time.time() - start_time:.2f}s)")
         except Exception as e:
-            logger.error(f"Meesho Selenium scraper failed: {e}")
+            logger.error("Meesho scraper failure", exc_info=True)
+            raise e
         finally:
             self._teardown_driver()
         return products
@@ -462,6 +499,8 @@ class MyntraScraper(SeleniumScraper):
         self.platform = "Myntra"
 
     def search_products(self, query, max_results=15):
+        logger.info(f"Starting Myntra scraper for query: {query}")
+        start_time = time.time()
         # Multi-strategy search URL: direct category or search query
         search_urls = [
             f"https://www.myntra.com/{query.replace(' ', '-')}",
@@ -469,104 +508,115 @@ class MyntraScraper(SeleniumScraper):
         ]
         
         products = []
-        for search_url in search_urls:
-            try:
-                logger.info(f"Opening Myntra Search Strategy: {search_url}")
-                source = self.get_page_source_selenium(search_url)
-                if not source:
-                    continue
-                
-                soup = BeautifulSoup(source, 'lxml')
-                # Try multiple product container classes (historically used by Myntra)
-                items = soup.find_all('li', class_=re.compile(r'product-base'))
-                if not items:
-                    items = soup.find_all('div', class_=re.compile(r'product-tupleListing|product-item|results-gridItem'))
-                
-                if not items:
-                    logger.debug(f"Next Myntra strategy due to no results at {search_url}")
-                    continue
-                
-                for item in items[:max_results]:
-                    try:
-                        href_tag = item.find('a', href=True)
-                        if not href_tag: continue
-                        
-                        href = href_tag['href']
-                        product_url = href if href.startswith('http') else "https://www.myntra.com/" + href.lstrip('/')
-                        
-                        # Flexible name extraction
-                        name_text = "Myntra Fashion"
-                        name_tag = item.find('div', class_='product-product') or item.find('h4', class_='product-product')
-                        if name_tag:
-                            name_text = name_tag.text.strip()
-                        
-                        brand_tag = item.find('h3', class_='product-brand') or item.find('div', class_='product-brand')
-                        brand_text = brand_tag.text.strip() if brand_tag else "Brand Name"
-                        full_name = f"{brand_text} {name_text}"
-                        
-                        # Flexible price extraction
-                        price = 0
-                        price_div = item.find('div', class_='product-price')
-                        if price_div:
-                            dp = price_div.find('span', class_='product-discountedPrice')
-                            price = self.extract_price(dp.text) if dp else self.extract_price(price_div.get_text())
-                            strike = price_div.find('span', class_='product-strike')
-                            original_price = self.extract_price(strike.text) if strike else price * 1.3
-                        else:
-                            # Try any price-looking string
-                            all_texts = list(item.stripped_strings)
-                            for t in all_texts:
-                                if 'Rs.' in t or '₹' in t:
-                                    val = self.extract_price(t)
-                                    if val:
-                                        price = val
-                                        break
-                            original_price = price * 1.3
-                        
-                        if not price: continue
-                            
-                        # Flexible image extraction
-                        img = item.find('img')
-                        image_url = img.get('src') if img else None
-                        if image_url and (image_url.endswith('.gif') or 'data:image' in image_url):
-                             image_url = img.get('data-src') or img.get('srcset') or img.get('image-source')
-                        
-                        rating_cont = item.find('div', class_='product-ratingsContainer')
-                        rating = 4.0
-                        review_count = random.randint(10, 1000)
-                        if rating_cont:
-                            texts = list(rating_cont.stripped_strings)
-                            if texts:
-                                rating = self.extract_rating(texts[0]) or 4.0
-                                if len(texts) > 1:
-                                    review_count = self.extract_review_count(texts[1]) or 100
-                                    
-                        products.append({
-                            'name': full_name,
-                            'brand': brand_text,
-                            'description': full_name,
-                            'price': price,
-                            'original_price': original_price,
-                            'rating': rating,
-                            'review_count': review_count,
-                            'platform': self.platform,
-                            'product_url': product_url,
-                            'image_url': image_url,
-                            'category': 'Clothing',
-                            'availability': 'In Stock'
-                        })
-                    except Exception as ie:
-                        logger.debug(f"Myntra inner error: {ie}")
+        source_retrieved = False
+        try:
+            for search_url in search_urls:
+                try:
+                    logger.info(f"Opening Myntra Search Strategy: {search_url}")
+                    source = self.get_page_source_selenium(search_url)
+                    if not source:
                         continue
-                
-                # If we found items, we can stop the strategy loop
-                if products:
-                    break
                     
-            except Exception as e:
-                logger.error(f"Myntra Strategy failure for {search_url}: {e}")
-            finally:
-                self._teardown_driver()
+                    source_retrieved = True
+                    soup = BeautifulSoup(source, 'lxml')
+                    # Try multiple product container classes (historically used by Myntra)
+                    items = soup.find_all('li', class_=re.compile(r'product-base'))
+                    if not items:
+                        items = soup.find_all('div', class_=re.compile(r'product-tupleListing|product-item|results-gridItem'))
+                    
+                    if not items:
+                        logger.debug(f"Next Myntra strategy due to no results at {search_url}")
+                        continue
+                    
+                    for item in items[:max_results]:
+                        try:
+                            href_tag = item.find('a', href=True)
+                            if not href_tag: continue
+                            
+                            href = href_tag['href']
+                            product_url = href if href.startswith('http') else "https://www.myntra.com/" + href.lstrip('/')
+                            
+                            # Flexible name extraction
+                            name_text = "Myntra Fashion"
+                            name_tag = item.find('div', class_='product-product') or item.find('h4', class_='product-product')
+                            if name_tag:
+                                name_text = name_tag.text.strip()
+                            
+                            brand_tag = item.find('h3', class_='product-brand') or item.find('div', class_='product-brand')
+                            brand_text = brand_tag.text.strip() if brand_tag else "Brand Name"
+                            full_name = f"{brand_text} {name_text}"
+                            
+                            # Flexible price extraction
+                            price = 0
+                            price_div = item.find('div', class_='product-price')
+                            if price_div:
+                                dp = price_div.find('span', class_='product-discountedPrice')
+                                price = self.extract_price(dp.text) if dp else self.extract_price(price_div.get_text())
+                                strike = price_div.find('span', class_='product-strike')
+                                original_price = self.extract_price(strike.text) if strike else price * 1.3
+                            else:
+                                # Try any price-looking string
+                                all_texts = list(item.stripped_strings)
+                                for t in all_texts:
+                                    if 'Rs.' in t or '₹' in t:
+                                        val = self.extract_price(t)
+                                        if val:
+                                            price = val
+                                            break
+                                original_price = price * 1.3
+                            
+                            if not price: continue
+                                
+                            # Flexible image extraction
+                            img = item.find('img')
+                            image_url = img.get('src') if img else None
+                            if image_url and (image_url.endswith('.gif') or 'data:image' in image_url):
+                                 image_url = img.get('data-src') or img.get('srcset') or img.get('image-source')
+                            
+                            rating_cont = item.find('div', class_='product-ratingsContainer')
+                            rating = 4.0
+                            review_count = random.randint(10, 1000)
+                            if rating_cont:
+                                texts = list(rating_cont.stripped_strings)
+                                if texts:
+                                    rating = self.extract_rating(texts[0]) or 4.0
+                                    if len(texts) > 1:
+                                        review_count = self.extract_review_count(texts[1]) or 100
+                                        
+                            products.append({
+                                'name': full_name,
+                                'brand': brand_text,
+                                'description': full_name,
+                                'price': price,
+                                'original_price': original_price,
+                                'rating': rating,
+                                'review_count': review_count,
+                                'platform': self.platform,
+                                'product_url': product_url,
+                                'image_url': image_url,
+                                'category': 'Clothing',
+                                'availability': 'In Stock'
+                            })
+                        except Exception as ie:
+                            logger.debug(f"Myntra inner error: {ie}")
+                            continue
+                    
+                    # If we found items, we can stop the strategy loop
+                    if products:
+                        break
+                        
+                except Exception as e:
+                    logger.error(f"Myntra Strategy failure for {search_url}: {e}")
+            
+            if not source_retrieved:
+                raise RuntimeError("Failed to retrieve page source from Myntra.")
+            
+            logger.info(f"Myntra products scraped: {len(products)} (Duration: {time.time() - start_time:.2f}s)")
+        except Exception as e:
+            logger.error("Myntra scraper failure", exc_info=True)
+            raise e
+        finally:
+            self._teardown_driver()
         
         return products
 
@@ -693,5 +743,5 @@ class ScraperManager:
                     p['recommendation_score'] = 0.0
             return products
         except Exception as e:
-            logger.error(f"Real-time scraping failed for {platform_name}: {e}")
-            return []
+            logger.error(f"Real-time scraping failed for {platform_name}: {e}", exc_info=True)
+            raise e
