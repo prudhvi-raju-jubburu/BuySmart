@@ -21,14 +21,14 @@ Add the following to your `backend/.env` file:
 # =====================================================
 
 # 1. Neon PostgreSQL URL (Staging / Production)
-DATABASE_URL=postgresql://neondb_owner:npg_u8BNYfAVoU1I@ep-cool-union-aouxe72y.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+DATABASE_URL=postgresql://USERNAME:PASSWORD@HOST:PORT/DATABASE
 
 # 2. Local PostgreSQL URLs (Alternative for local development)
 # DATABASE_URL=postgresql://postgres:postgres@localhost:5432/buysmart_dev
 # TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/buysmart_test
 
 # 3. Test Database Connection (Required for running unit/persistence tests)
-TEST_DATABASE_URL=postgresql://neondb_owner:npg_u8BNYfAVoU1I@ep-cool-union-aouxe72y.c-2.ap-southeast-1.aws.neon.tech/buysmart_test?sslmode=require
+TEST_DATABASE_URL=postgresql://USERNAME:PASSWORD@HOST:PORT/DATABASE
 ```
 
 ---
