@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getFeedback } from '../services/api';
+import { getFeedback, getHealth } from '../services/api';
 import './Footer.css';
 
 const INFO_PAGES = {
@@ -82,10 +82,26 @@ const Footer = ({ onOpenFeedback, onNavigate }) => {
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [infoKey, setInfoKey] = useState(null);
+  const [healthStatus, setHealthStatus] = useState('loading');
 
   useEffect(() => {
     loadFeedbacks();
+    checkHealth();
   }, []);
+
+  const checkHealth = async () => {
+    try {
+      const data = await getHealth();
+      if (data && data.status === 'healthy') {
+        setHealthStatus('healthy');
+      } else {
+        setHealthStatus('degraded');
+      }
+    } catch (error) {
+      console.error('Error checking health:', error);
+      setHealthStatus('degraded');
+    }
+  };
 
   const loadFeedbacks = async () => {
     try {
@@ -174,6 +190,12 @@ const Footer = ({ onOpenFeedback, onNavigate }) => {
         <div className="footer-bottom">
           <div className="footer-copyright">
             Buy<span>Smart</span> © 2026. Made for Smart Shoppers.
+            {healthStatus && (
+              <span className={`health-status-badge ${healthStatus}`} title={`System Status: ${healthStatus}`}>
+                <span className="pulse-dot"></span>
+                System: {healthStatus === 'healthy' ? 'Operational' : healthStatus === 'loading' ? 'Checking...' : 'Degraded'}
+              </span>
+            )}
           </div>
 
           <div className="footer-developer">

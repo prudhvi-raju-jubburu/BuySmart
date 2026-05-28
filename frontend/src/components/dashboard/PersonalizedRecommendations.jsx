@@ -65,10 +65,10 @@ const PersonalizedRecommendations = ({ user }) => {
         // Like or Save for Later
         await submitRecommendationFeedback(productId, feedbackType);
         setFeedbackStatus(prev => ({ ...prev, [productId]: feedbackType }));
-        alert(feedbackType === 'like' ? '👍 Liked! We will recommend more items like this.' : '💾 Saved for Later!');
+        window.showToast?.(feedbackType === 'like' ? '👍 Liked! We will recommend more items like this.' : '💾 Saved for Later!', 'success');
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Feedback submission failed');
+      window.showToast?.(err.response?.data?.message || 'Feedback submission failed', 'error');
     }
   };
 
@@ -84,7 +84,7 @@ const PersonalizedRecommendations = ({ user }) => {
       if (product.product_url) {
         window.open(product.product_url, '_blank', 'noopener,noreferrer');
       } else {
-        alert('Product URL not available.');
+        window.showToast?.('Product URL not available.', 'error');
       }
     }
   };
@@ -92,9 +92,9 @@ const PersonalizedRecommendations = ({ user }) => {
   const handleAddWishlist = async (productId, product) => {
     try {
       await addToWishlist(productId, { product_data: product });
-      alert('❤️ Product added to your wishlist!');
+      window.showToast?.('❤️ Product added to your wishlist!', 'success');
     } catch (e) {
-      alert(e.response?.data?.error || 'Failed to add to wishlist');
+      window.showToast?.(e.response?.data?.error || 'Failed to add to wishlist', 'error');
     }
   };
 

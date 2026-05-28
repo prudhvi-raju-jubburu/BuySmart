@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import './TrendingSection.css';
 import { getTrendingProducts } from '../services/api';
 import ProductCard from './ProductCard';
+import { SkeletonCard } from './SkeletonCard';
 
 const TrendingSection = ({ user }) => {
   const [items, setItems] = useState([]);
@@ -32,7 +33,9 @@ const TrendingSection = ({ user }) => {
         </button>
       </div>
       <div className="trending-grid">
-        {items.length === 0 ? (
+        {loading ? (
+          [...Array(4)].map((_, i) => <SkeletonCard key={`tr-sk-${i}`} />)
+        ) : items.length === 0 ? (
           <div className="trending-empty">
             No trending data yet. Search a product and click <b>Buy Now</b> to generate trending activity.
           </div>

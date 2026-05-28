@@ -50,7 +50,7 @@ const FloatingFeedback = ({ user, isOpen, onToggle }) => {
       }, 3000);
     } catch (error) {
       console.error('Error submitting feedback:', error);
-      alert('Error submitting feedback. Please try again.');
+      window.showToast?.('Error submitting feedback. Please try again.', 'error');
     } finally {
       setSubmitting(false);
     }

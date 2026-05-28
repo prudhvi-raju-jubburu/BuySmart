@@ -66,7 +66,7 @@ const AdminPage = ({ user: currentUser }) => {
 
   const handleToggleStatus = async (user) => {
     if (currentUser && user.id === currentUser.id) {
-      alert("You cannot disable your own account.");
+      window.showToast?.("You cannot disable your own account.", "warning");
       return;
     }
     setActionBusy(true);
@@ -77,7 +77,7 @@ const AdminPage = ({ user: currentUser }) => {
         fetchDashboardData();
       }
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to update user status.");
+      window.showToast?.(err.response?.data?.message || "Failed to update user status.", "error");
     } finally {
       setActionBusy(false);
     }
@@ -85,7 +85,7 @@ const AdminPage = ({ user: currentUser }) => {
 
   const handleChangeRole = async (user, newRole) => {
     if (currentUser && user.id === currentUser.id) {
-      alert("You cannot modify your own role.");
+      window.showToast?.("You cannot modify your own role.", "warning");
       return;
     }
     setActionBusy(true);
@@ -96,7 +96,7 @@ const AdminPage = ({ user: currentUser }) => {
         fetchDashboardData();
       }
     } catch (err) {
-      alert(err.response?.data?.message || "Failed to update user role.");
+      window.showToast?.(err.response?.data?.message || "Failed to update user role.", "error");
     } finally {
       setActionBusy(false);
     }

@@ -48,7 +48,7 @@ const SearchSection = ({ onSearch, filters: initialFilters, onClearFilters, onCl
   const handleVoiceSearch = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Your browser does not support Speech Recognition. Please try Chrome.");
+      window.showToast?.("Your browser does not support Speech Recognition. Please try Chrome.", "warning");
       return;
     }
 

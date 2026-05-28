@@ -44,7 +44,7 @@ const AISearchPanel = ({ user }) => {
         return prev.filter((p) => p.id !== product.id);
       }
       if (prev.length >= 3) {
-        alert("You can compare a maximum of 3 products.");
+        window.showToast?.("You can compare a maximum of 3 products.", "warning");
         return prev;
       }
       return [...prev, product];

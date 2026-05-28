@@ -45,7 +45,7 @@ const PriceAlertPanel = () => {
         fetchAlerts();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to delete price alert');
+      window.showToast?.(err.response?.data?.message || 'Failed to delete price alert', 'error');
     }
   };
 
@@ -57,7 +57,7 @@ const PriceAlertPanel = () => {
   const handleSaveEdit = async (alertId) => {
     const parsedPrice = parseFloat(editPrice);
     if (isNaN(parsedPrice) || parsedPrice <= 0) {
-      alert('Please enter a valid target price greater than 0');
+      window.showToast?.('Please enter a valid target price greater than 0', 'warning');
       return;
     }
     setSaveLoading(true);
@@ -68,7 +68,7 @@ const PriceAlertPanel = () => {
         fetchAlerts();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to update price alert');
+      window.showToast?.(err.response?.data?.message || 'Failed to update price alert', 'error');
     } finally {
       setSaveLoading(false);
     }
@@ -87,7 +87,7 @@ const PriceAlertPanel = () => {
       if (product.product_url) {
         window.open(product.product_url, '_blank', 'noopener,noreferrer');
       } else {
-        alert('Product link not available');
+        window.showToast?.('Product link not available', 'error');
       }
     }
   };

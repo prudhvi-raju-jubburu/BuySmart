@@ -457,9 +457,9 @@
     font-size: 1.25rem;
   }
   .filter-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
   }
   .filter-group {
     display: flex;
@@ -483,8 +483,8 @@
     justify-content: center;
   }
   .chips-row {
-    flex-direction: column;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 1.25rem;
   }
   .filter-chips-container {
@@ -496,6 +496,13 @@
   .filter-chip {
     width: 100%;
     box-sizing: border-box;
+    min-height: 48px;
+  }
+}
+
+@media (max-width: 400px) {
+  .filter-chips-container {
+    grid-template-columns: 1fr;
   }
 }
 

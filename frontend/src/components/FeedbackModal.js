@@ -30,7 +30,7 @@ const FeedbackModal = ({ isOpen, onClose, user }) => {
       }, 2000);
     } catch (error) {
       console.error('Error submitting feedback:', error);
-      alert('Error submitting feedback. Please try again.');
+      window.showToast?.('Error submitting feedback. Please try again.', 'error');
     } finally {
       setSubmitting(false);
     }

@@ -83,7 +83,7 @@ const Navbar = ({ user, onAuthChange, onOpenSection, onOpenProfile, theme, onTog
 
             {/* Mobile hamburger */}
             <button
-              className="nav-hamburger"
+              className={`nav-hamburger ${mobileMenuOpen ? 'open' : ''}`}
               onClick={() => setMobileMenuOpen(o => !o)}
               aria-label="Open Menu"
               aria-expanded={mobileMenuOpen}
@@ -93,13 +93,18 @@ const Navbar = ({ user, onAuthChange, onOpenSection, onOpenProfile, theme, onTog
           </div>
         </div>
 
+        {/* Mobile menu overlay */}
+        <div className={`nav-mobile-overlay ${mobileMenuOpen ? 'open' : ''}`} onClick={() => setMobileMenuOpen(false)} />
 
-
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="nav-mobile-menu">
-            <button className={`nav-mobile-link ${activeTab === 'home' ? 'active' : ''}`} onClick={() => navigate('home')}>Home</button>
-            <button className={`nav-mobile-link ${activeTab === 'search' ? 'active' : ''}`} onClick={() => navigate('search')}>Search</button>
+        {/* Mobile menu drawer */}
+        <div className={`nav-mobile-drawer ${mobileMenuOpen ? 'open' : ''}`} role="dialog" aria-modal="true" aria-label="Mobile Navigation">
+          <div className="drawer-header">
+            <div className="drawer-logo">Buy<span>Smart</span></div>
+            <button className="drawer-close-btn" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu">✕</button>
+          </div>
+          <div className="drawer-content">
+            <button className={`nav-mobile-link ${activeTab === 'home' ? 'active' : ''}`} onClick={() => navigate('home')}>🏠 Home</button>
+            <button className={`nav-mobile-link ${activeTab === 'search' ? 'active' : ''}`} onClick={() => navigate('search')}>🔍 Search</button>
 
             {user ? (
               <>
@@ -112,13 +117,13 @@ const Navbar = ({ user, onAuthChange, onOpenSection, onOpenProfile, theme, onTog
                 )}
               </>
             ) : (
-              <>
-                <button className="nav-mobile-link" onClick={() => navigate('login')}>Login</button>
+              <div className="drawer-auth-actions" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
+                <button className="nav-mobile-link" onClick={() => navigate('login')}>🔑 Login</button>
                 <button className="nav-mobile-link nav-mobile-primary" onClick={() => navigate('register')}>Create Account</button>
-              </>
+              </div>
             )}
           </div>
-        )}
+        </div>
       </nav>
     </>
   );

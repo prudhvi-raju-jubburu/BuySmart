@@ -52,7 +52,7 @@ const ProductCard = ({ product, user, source = 'search', searchQuery, isSelected
       if (product.product_url) {
         window.open(product.product_url, '_blank', 'noopener,noreferrer');
       } else {
-        alert('Product link not available');
+        window.showToast?.('Product link not available', 'info');
       }
     } finally {
       setBusy(false);
@@ -62,15 +62,15 @@ const ProductCard = ({ product, user, source = 'search', searchQuery, isSelected
   const handleWishlist = async (e) => {
     e.stopPropagation();
     if (!user) {
-      alert('Please login to save products');
+      window.showToast?.('Please login to save products', 'warning');
       return;
     }
     setBusy(true);
     try {
       await addToWishlist(product.id, { product_data: product });
-      alert('✅ Added to wishlist!');
+      window.showToast?.('Added to wishlist!', 'success');
     } catch (e) {
-      alert(e?.response?.data?.error || 'Wishlist failed');
+      window.showToast?.(e?.response?.data?.error || 'Wishlist failed', 'error');
     } finally {
       setBusy(false);
     }

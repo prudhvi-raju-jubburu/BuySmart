@@ -57,8 +57,8 @@ const SearchHistoryPanel = () => {
         // Fetch history again to keep pagination count aligned
         fetchHistory();
       }
-    } catch (err) {
-      alert(err.response?.data?.message || 'Error deleting search history entry');
+    } catch (error) {
+      window.showToast?.(error.response?.data?.message || 'Error deleting search history entry', 'error');
     }
   };
 

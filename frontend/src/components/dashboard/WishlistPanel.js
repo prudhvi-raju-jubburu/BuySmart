@@ -41,7 +41,7 @@ const WishlistPanel = ({ user }) => {
         fetchWishlist();
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to remove product');
+      window.showToast?.(err.response?.data?.message || 'Failed to remove product', 'error');
     } finally {
       setBusyId(null);
     }
@@ -60,7 +60,7 @@ const WishlistPanel = ({ user }) => {
       if (product.product_url) {
         window.open(product.product_url, '_blank', 'noopener,noreferrer');
       } else {
-        alert('Product link not available');
+        window.showToast?.('Product link not available', 'error');
       }
     }
   };

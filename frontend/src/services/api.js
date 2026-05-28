@@ -1,13 +1,28 @@
 import axios from 'axios';
 
-export const getApiBaseUrl = () => {
-  // If we're on localhost, always try to use the local backend
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return 'http://localhost:5001/api';
+export function getApiBaseUrl() {
+  let apiUrl = process.env.REACT_APP_API_URL?.trim();
+
+  // Handle accidental full assignment paste
+  if (apiUrl?.startsWith("REACT_APP_API_URL=")) {
+    apiUrl = apiUrl.replace("REACT_APP_API_URL=", "");
   }
-  // Otherwise use the environment variable (for production)
-  return process.env.REACT_APP_API_URL || 'https://buysmart-ai8b.onrender.com/api';
-};
+
+  // Development fallback
+  if (!apiUrl) {
+    apiUrl =
+      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? "http://localhost:5001/api"
+        : "https://buysmart-ai8b.onrender.com/api";
+  }
+
+  // Ensure /api suffix exists
+  if (!apiUrl.endsWith("/api")) {
+    apiUrl += "/api";
+  }
+
+  return apiUrl;
+}
 
 export const getBaseUrl = () => {
   return getApiBaseUrl().replace('/api', '');
@@ -17,11 +32,11 @@ const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
-
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('buysmart_token');
@@ -34,7 +49,7 @@ api.interceptors.request.use((config) => {
   return Promise.reject(error);
 });
 
-// Response interceptor: auto-refresh access token on 401
+// Response interceptor: auto-refresh access token on 401 & global error toasts
 let isRefreshing = false;
 let failedQueue = [];
 let sessionExpiredCallback = null;
@@ -57,6 +72,10 @@ const processQueue = (error, token = null) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
+
     const originalRequest = error.config;
 
     // Only attempt refresh on 401, and not for auth endpoints themselves
@@ -68,7 +87,6 @@ api.interceptors.response.use(
       !originalRequest.url?.includes('/auth/register')
     ) {
       if (isRefreshing) {
-        // Queue this request until refresh completes
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then(token => {
@@ -93,32 +111,72 @@ api.interceptors.response.use(
           return api(originalRequest);
         } catch (refreshError) {
           processQueue(refreshError, null);
-          // Refresh failed — clear tokens (session expired)
           localStorage.removeItem('buysmart_token');
           localStorage.removeItem('buysmart_refresh_token');
           if (sessionExpiredCallback) {
             sessionExpiredCallback();
           }
+          window.showToast?.('Session expired. Please log in again.', 'warning');
           return Promise.reject(refreshError);
         } finally {
           isRefreshing = false;
         }
       } else {
         isRefreshing = false;
-        // No refresh token — clear access token and trigger callback
         localStorage.removeItem('buysmart_token');
         if (sessionExpiredCallback) {
           sessionExpiredCallback();
         }
+        window.showToast?.('Session expired. Please log in again.', 'warning');
       }
+    }
+
+    // Global Error Reporting via Toast
+    let errMsg = 'Something went wrong. Please try again.';
+    if (error.code === 'ECONNABORTED') {
+      errMsg = 'Request timeout. The server took too long to respond.';
+    } else if (!error.response) {
+      errMsg = 'Network error. Please check your internet connection or server status.';
+    } else if (error.response.status === 500) {
+      errMsg = 'Internal server error. Our team has been notified.';
+    } else if (error.response.data?.message) {
+      errMsg = error.response.data.message;
+    } else if (error.response.data?.error) {
+      errMsg = error.response.data.error;
+    }
+
+    // Show toast for non-401 errors
+    if (error.response?.status !== 401) {
+      window.showToast?.(errMsg, 'error');
     }
 
     return Promise.reject(error);
   }
 );
 
+let searchAbortController = null;
+
 export const searchProducts = async (query, filters = {}) => {
-  const response = await api.post('/search', { query, filters });
+  if (searchAbortController) {
+    searchAbortController.abort();
+  }
+  searchAbortController = new AbortController();
+
+  try {
+    const response = await api.post('/search', { query, filters }, {
+      signal: searchAbortController.signal
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isCancel(error)) {
+      throw new Error('Cancelled');
+    }
+    throw error;
+  }
+};
+
+export const getHealth = async () => {
+  const response = await api.get('/health');
   return response.data;
 };
 

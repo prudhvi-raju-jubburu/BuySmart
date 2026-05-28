@@ -48,7 +48,7 @@ const AuthModal = ({ open, mode, onClose, onAuthChange }) => {
       setPassword('');
       onClose?.();
     } catch (e) {
-      alert(e?.response?.data?.message || e?.response?.data?.error || 'Login failed');
+      window.showToast?.(e?.response?.data?.message || e?.response?.data?.error || 'Login failed', 'error');
     } finally {
       setBusy(false);
     }
@@ -60,7 +60,7 @@ const AuthModal = ({ open, mode, onClose, onAuthChange }) => {
       await registerUser({ name, email, password });
       await doLogin();
     } catch (e) {
-      alert(e?.response?.data?.message || e?.response?.data?.error || 'Register failed');
+      window.showToast?.(e?.response?.data?.message || e?.response?.data?.error || 'Register failed', 'error');
       setBusy(false);
     }
   };
