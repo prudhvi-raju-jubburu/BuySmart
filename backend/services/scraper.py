@@ -32,14 +32,18 @@ def get_chromedriver_path():
         with chromedriver_lock:
             if CHROMEDRIVER_PATH is None:
                 import os
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                local_driver = os.path.join(base_dir, "bin", "chromedriver")
+                
                 driver_paths = [
+                    local_driver,
                     "/usr/bin/chromedriver",
                     "/snap/bin/chromedriver"
                 ]
                 for path in driver_paths:
                     if os.path.exists(path):
                         CHROMEDRIVER_PATH = path
-                        logger.info(f"Using system ChromeDriver: {CHROMEDRIVER_PATH}")
+                        logger.info(f"Using system/local ChromeDriver: {CHROMEDRIVER_PATH}")
                         break
                 if CHROMEDRIVER_PATH is None:
                     logger.info("Initializing ChromeDriver path using ChromeDriverManager...")
@@ -134,7 +138,11 @@ class SeleniumScraper(BaseScraper):
         options.add_argument("--start-maximized")
         
         import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        local_chrome = os.path.join(base_dir, "bin", "chrome", "chrome")
+        
         possible_paths = [
+            local_chrome,
             "/usr/bin/chromium",
             "/usr/bin/chromium-browser",
             "/snap/bin/chromium"
