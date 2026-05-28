@@ -573,6 +573,34 @@ class ProductRecommender:
             
             filtered_products.append(item_payload)
             
+        if not filtered_products and products_list:
+            logger.info("Strict/relaxed ranking filtered out all products. Using fallback best-effort selection.")
+            for p in products_list[:10]:
+                try:
+                    item_payload = dict(p) if isinstance(p, dict) else p.to_dict()
+                except Exception:
+                    item_payload = {
+                        'name': self._get_val(p, 'name', 'Product'),
+                        'description': self._get_val(p, 'description', ''),
+                        'price': self._get_val(p, 'price', 0.0),
+                        'original_price': self._get_val(p, 'original_price', 0.0),
+                        'rating': self._get_val(p, 'rating', 4.0),
+                        'review_count': self._get_val(p, 'review_count', 10),
+                        'platform': self._get_val(p, 'platform', 'Unknown'),
+                        'product_url': self._get_val(p, 'product_url', ''),
+                        'image_url': self._get_val(p, 'image_url', ''),
+                        'category': self._get_val(p, 'category', 'General'),
+                        'availability': self._get_val(p, 'availability', 'In Stock')
+                    }
+                item_payload.setdefault('score', 0.5)
+                item_payload.setdefault('combined_score', 0.5)
+                item_payload.setdefault('recommendation_score', 0.5)
+                item_payload.setdefault('match_percentage', 50)
+                item_payload.setdefault('reason', 'Best effort match')
+                item_payload.setdefault('brand', self._get_val(p, 'brand', ''))
+                item_payload.setdefault('category', self._get_val(p, 'category', 'General'))
+                filtered_products.append(item_payload)
+            
         deduped = self._deduplicate_products(filtered_products)
         deduped.sort(key=lambda x: x['score'], reverse=True)
         return deduped

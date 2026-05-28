@@ -32,14 +32,20 @@ def get_chromedriver_path():
         with chromedriver_lock:
             if CHROMEDRIVER_PATH is None:
                 import os
-                sys_driver = "/usr/bin/chromedriver"
-                if os.path.exists(sys_driver):
-                    CHROMEDRIVER_PATH = sys_driver
-                    logger.info(f"Using system ChromeDriver: {CHROMEDRIVER_PATH}")
-                else:
+                driver_paths = [
+                    "/usr/bin/chromedriver",
+                    "/snap/bin/chromedriver"
+                ]
+                for path in driver_paths:
+                    if os.path.exists(path):
+                        CHROMEDRIVER_PATH = path
+                        logger.info(f"Using system ChromeDriver: {CHROMEDRIVER_PATH}")
+                        break
+                if CHROMEDRIVER_PATH is None:
                     logger.info("Initializing ChromeDriver path using ChromeDriverManager...")
                     CHROMEDRIVER_PATH = ChromeDriverManager().install()
                     logger.info(f"ChromeDriver path initialized: {CHROMEDRIVER_PATH}")
+    return CHROMEDRIVER_PATH
     return CHROMEDRIVER_PATH
 
 class BaseScraper:
@@ -127,12 +133,17 @@ class SeleniumScraper(BaseScraper):
         options.add_argument("--window-size=1920,1080")
         options.add_argument("--start-maximized")
         
-        # Check if running in Linux (e.g. Render) where Chromium is installed at /usr/bin/chromium
         import os
-        chromium_path = "/usr/bin/chromium"
-        if os.path.exists(chromium_path):
-            options.binary_location = chromium_path
-            logger.info(f"Setting Chrome binary location to: {chromium_path}")
+        possible_paths = [
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/snap/bin/chromium"
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                options.binary_location = path
+                logger.info(f"Using Chromium binary: {path}")
+                break
             
         # Ensure we always get a desktop layout by hardcoding a modern desktop User-Agent
         desktop_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -145,10 +156,18 @@ class SeleniumScraper(BaseScraper):
         
         try:
             path = get_chromedriver_path()
+            logger.info(f"Resolved ChromeDriver path: {path}")
+            if hasattr(options, 'binary_location') and options.binary_location:
+                logger.info(f"Configured Chromium binary location: {options.binary_location}")
+            else:
+                logger.info("Chromium binary location not explicitly configured (using default Chrome).")
+                
+            start_setup = time.time()
             self.driver = webdriver.Chrome(service=ChromeService(path), options=options)
             self.driver.set_page_load_timeout(30)
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            logger.info("Chromium WebDriver initialized successfully.")
+            duration = time.time() - start_setup
+            logger.info(f"Chromium WebDriver initialized successfully in {duration:.2f}s.")
         except Exception as e:
             logger.error("Chrome initialization failed", exc_info=True)
             if self.driver:
