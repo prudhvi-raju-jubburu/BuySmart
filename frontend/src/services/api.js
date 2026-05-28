@@ -6,7 +6,7 @@ export const getApiBaseUrl = () => {
     return 'http://localhost:5001/api';
   }
   // Otherwise use the environment variable (for production)
-  return process.env.REACT_APP_API_URL || 'https://buysmart-8dkv.onrender.com/api';
+  return process.env.REACT_APP_API_URL || 'https://buysmart-ai8b.onrender.com/api';
 };
 
 export const getBaseUrl = () => {

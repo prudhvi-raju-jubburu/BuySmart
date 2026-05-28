@@ -33,18 +33,15 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.from_object(Config)
 # Enable CORS for React frontend
-CORS(app, resources={
-    r"/api/*": {
-        "origins": [
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-            "https://buy-smart-ashen.vercel.app",
-            "https://*.vercel.app",
-            "https://*.onrender.com"
-        ],
-        "supports_credentials": True
-    }
-})
+CORS(
+    app,
+    resources={r"/*": {"origins": [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://buysmart-ai.vercel.app"
+    ]}},
+    supports_credentials=True
+)
 
 
 
@@ -60,8 +57,7 @@ def home():
 def health():
     return jsonify({
         "status": "ok",
-        "service": "BuySmart API",
-        "time": datetime.utcnow().isoformat()
+        "service": "BuySmart Backend"
     })
 
 
@@ -1108,8 +1104,12 @@ def not_found(e):
 
 
 @app.errorhandler(500)
-def server_error(e):
-    return jsonify({"error": "Internal server error"}), 500
+def internal_server_error(error):
+    logger.error("Internal Server Error", exc_info=True)
+    return jsonify({
+        "success": False,
+        "message": "Internal server error"
+    }), 500
 
 
 if __name__ == '__main__':
