@@ -10,6 +10,8 @@ import NotificationTicker from './components/NotificationTicker';
 import ErrorBoundary from './components/ErrorBoundary';
 import { searchProducts, getStats, getMe, getSearchHistory, clearSearchHistory, submitAISearchFeedback, setSessionExpiredCallback } from './services/api';
 import { ToastContainer } from './components/Toast';
+import Footer from './components/Footer';
+import FloatingFeedback from './components/FloatingFeedback';
 
 // Lazy load page components for route-level code splitting
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -19,9 +21,6 @@ const HomePage = lazy(() => import('./pages/HomePage'));
 const SearchPage = lazy(() => import('./pages/SearchPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
-
-import Footer from './components/Footer';
-import FloatingFeedback from './components/FloatingFeedback';
 
 function App() {
   const [products, setProducts] = useState([]);
