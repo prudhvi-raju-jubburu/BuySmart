@@ -16,11 +16,11 @@ ENV PORT=5001
 WORKDIR /app
 
 # Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
-COPY . .
+COPY backend/ .
 
 # Expose port and run the Flask application
 EXPOSE 5001
