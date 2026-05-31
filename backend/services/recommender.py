@@ -1,4 +1,5 @@
 import numpy as np
+import threading
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from models import Product, db, UserPreference, RecommendationFeedback, PurchaseEvent, SearchEvent, ClickEvent, WishlistItem, AnalyticsCounter
@@ -101,6 +102,7 @@ class ProductRecommender:
     MIN_ACCEPTABLE_SCORE = 0.35
     
     def __init__(self):
+        self._local = threading.local()
         self.vectorizer = TfidfVectorizer(
             max_features=Config.TFIDF_MAX_FEATURES,
             stop_words='english',
@@ -112,6 +114,10 @@ class ProductRecommender:
         self.product_vectors = None
         self.product_ids = None
         self.is_trained = False
+
+    def get_last_removed_count(self):
+        return getattr(self._local, 'removed_count', 0)
+
     
     def prepare_text_features(self, products):
         """Prepare text features for TF-IDF vectorization"""
@@ -352,10 +358,22 @@ class ProductRecommender:
         }
         logger.info(f"Search Quality Metrics: {json.dumps(log_payload)}")
         
+        # Log Top 10 Ranked Products
+        logger.info("=== Top 10 Ranked Products ===")
+        for idx, item in enumerate(diversified[:10]):
+            logger.info(json.dumps({
+                "name": item.get("name"),
+                "platform": item.get("platform"),
+                "similarity": item.get("similarity_score"),
+                "recommendation": item.get("recommendation_score"),
+                "final_score": item.get("score")
+            }))
+
         # Return top 20
         return diversified[:20]
 
     def _filter_and_score(self, query, products_list, filters=None, strict=True, threshold=0.35):
+        self._local.removed_count = 0
         min_price = None
         max_price = None
         intent_category = None
@@ -526,6 +544,13 @@ class ProductRecommender:
             if intent_category and (intent_category.lower() in p_cat.lower() or intent_category.lower() in p_name.lower()):
                 base_similarity = min(1.0, base_similarity + 0.20)
                 
+            # Similarity relevance gate
+            is_ai = filters.get('is_ai', False) if filters else False
+            sim_threshold = 0.40 if is_ai else 0.30
+            if base_similarity < sim_threshold:
+                self._local.removed_count += 1
+                continue
+                
             # Scoring
             final_score, breakdown = self.calculate_final_product_score(
                 p, base_similarity, query_intent, max_reviews, user_pref, strict=strict
@@ -679,7 +704,27 @@ class ProductRecommender:
         # 2. Weak Match
         is_generic = any(gen in p_cat for gen in ["electronics", "gadget", "gadgets", "fashion", "apparel", "other", "general", "shopping", "product", "items", "utility", "all", ""])
         if is_generic or not p_cat:
-            if any(syn in p_title for syn in self.CATEGORY_SYNONYMS[target_key]):
+            has_synonym = any(syn in p_title for syn in self.CATEGORY_SYNONYMS[target_key])
+            
+            # Laptop specific weak match expansions (e.g. processor/brand/specs)
+            if not has_synonym and target_key == "laptop":
+                laptop_specs = {
+                    "intel", "amd", "ryzen", "core 3", "core 5", "core 7", "celeron", "pentium", 
+                    "processor", "ram", "ssd", "display", "aspire", "inspiron", "pavilion", 
+                    "vivobook", "thinkpad", "ideapad", "modern", "v15", "probook", "elitebook",
+                    "primebook", "book"
+                }
+                has_synonym = any(re.search(r'\b' + re.escape(w) + r'\b', p_title) for w in laptop_specs)
+                
+            # Mobile specific weak match expansions
+            if not has_synonym and target_key == "mobile":
+                mobile_specs = {
+                    "snapdragon", "mediatek", "dimensity", "bionic", "ram", "rom", "5g", "4g",
+                    "redmi", "realme", "samsung", "oneplus", "iphone", "xiaomi", "motorola"
+                }
+                has_synonym = any(re.search(r'\b' + re.escape(w) + r'\b', p_title) for w in mobile_specs)
+
+            if has_synonym:
                 # Verify p_title does not contain active exclusion terms
                 for term in active_exclusions:
                     pattern = r'\b' + re.escape(term) + r'\b'
@@ -906,12 +951,12 @@ class ProductRecommender:
         freshness = self.calculate_freshness_score(created_at)
         
         final_score = (
-            0.40 * relevance +
-            0.20 * quality +
-            0.15 * preference +
-            0.10 * popularity +
-            0.10 * spec +
-            0.05 * freshness
+            0.75 * relevance +
+            0.0833 * quality +
+            0.0625 * preference +
+            0.0417 * popularity +
+            0.0417 * spec +
+            0.0208 * freshness
         )
         
         breakdown = {

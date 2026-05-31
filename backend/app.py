@@ -199,8 +199,8 @@ def run_bootstrap():
         except Exception as e:
             logger.error(f"Bootstrap error: {e}")
 
-# Start bootstrap in background thread
-threading.Thread(target=run_bootstrap, daemon=True).start()
+# Start bootstrap in background thread (disabled on startup for production stability)
+# threading.Thread(target=run_bootstrap, daemon=True).start()
 
 
 

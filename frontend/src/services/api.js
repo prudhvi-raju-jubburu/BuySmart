@@ -1,19 +1,26 @@
 import axios from 'axios';
 
 export function getApiBaseUrl() {
-  let apiUrl = process.env.REACT_APP_API_URL?.trim();
-
-  // Handle accidental full assignment paste
-  if (apiUrl?.startsWith("REACT_APP_API_URL=")) {
-    apiUrl = apiUrl.replace("REACT_APP_API_URL=", "");
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  let apiUrl;
+  if (isLocalhost) {
+    apiUrl = process.env.REACT_APP_LOCAL_API_URL?.trim();
+    if (apiUrl?.startsWith("REACT_APP_LOCAL_API_URL=")) {
+      apiUrl = apiUrl.replace("REACT_APP_LOCAL_API_URL=", "");
+    }
+    if (!apiUrl) {
+      apiUrl = 'http://localhost:5001/api';
+    }
+  } else {
+    apiUrl = process.env.REACT_APP_API_URL?.trim();
+    if (apiUrl?.startsWith("REACT_APP_API_URL=")) {
+      apiUrl = apiUrl.replace("REACT_APP_API_URL=", "");
+    }
   }
 
   // Development fallback
   if (!apiUrl) {
-    apiUrl =
-      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-        ? "http://localhost:5001/api"
-        : "https://buysmart-ai8b.onrender.com/api";
+    apiUrl = "https://buysmart-ai8b.onrender.com/api";
   }
 
   // Ensure /api suffix exists
@@ -29,6 +36,12 @@ export const getBaseUrl = () => {
 };
 
 const API_BASE_URL = getApiBaseUrl();
+
+console.log("================================");
+console.log("Environment:", process.env.NODE_ENV);
+console.log("Hostname:", window.location.hostname);
+console.log("Active API URL:", API_BASE_URL);
+console.log("================================");
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -156,16 +169,21 @@ api.interceptors.response.use(
 
 let searchAbortController = null;
 
-export const searchProducts = async (query, filters = {}) => {
+export const searchProducts = async (query, filters = {}, searchId = null) => {
   if (searchAbortController) {
     searchAbortController.abort();
   }
   searchAbortController = new AbortController();
 
+  console.log("Searching:", query);
+  console.log("Request URL:", `${API_BASE_URL}/search?query=${query}`);
+
   try {
-    const response = await api.post('/search', { query, filters }, {
-      signal: searchAbortController.signal
+    const response = await api.post('/search', { query, filters, search_id: searchId }, {
+      signal: searchAbortController.signal,
+      timeout: 90000
     });
+    console.log("Search API Response:", response.data);
     return response.data;
   } catch (error) {
     if (axios.isCancel(error)) {
@@ -173,6 +191,13 @@ export const searchProducts = async (query, filters = {}) => {
     }
     throw error;
   }
+};
+
+export const getSearchStatus = async (searchId) => {
+  const response = await api.get('/search/status', {
+    params: { search_id: searchId }
+  });
+  return response.data;
 };
 
 export const getHealth = async () => {

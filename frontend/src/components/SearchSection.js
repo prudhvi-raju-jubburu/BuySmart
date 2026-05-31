@@ -87,7 +87,7 @@ const SearchSection = ({ onSearch, filters: initialFilters, onClearFilters, onCl
   return (
     <div className="search-section">
       <form onSubmit={handleSubmit}>
-        <div className="search-box">
+        <div className="search-box-container">
           <div className="input-group">
             <input
               type="text"
@@ -117,7 +117,7 @@ const SearchSection = ({ onSearch, filters: initialFilters, onClearFilters, onCl
         </div>
 
         <div className="filters">
-          <div className="filter-row">
+          <div className="filter-controls-row">
             <div className="filter-group">
               <label className="filter-label">Price Range (₹):</label>
               <input
@@ -160,23 +160,25 @@ const SearchSection = ({ onSearch, filters: initialFilters, onClearFilters, onCl
             </button>
           </div>
 
-          <div className="filter-row chips-row">
+          <div className="filter-stores-row">
             <div className="filter-group platforms-group">
               <label className="filter-label">Stores:</label>
-              <div className="filter-chips-container">
+              <div className="platform-checkboxes">
                 {['Amazon', 'Flipkart', 'Myntra', 'Meesho'].map(p => (
-                  <button
-                    type="button"
-                    key={p}
-                    className={`filter-chip ${localFilters.platforms.includes(p) ? 'active' : ''}`}
-                    onClick={() => handlePlatformToggle(p)}
-                  >
+                  <label key={p} className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={localFilters.platforms.includes(p)}
+                      onChange={() => handlePlatformToggle(p)}
+                    />
                     {p}
-                  </button>
+                  </label>
                 ))}
               </div>
             </div>
+          </div>
 
+          <div className="filter-quick-row">
             <div className="filter-group quick-filters-group">
               <label className="filter-label">Quick Filters:</label>
               <div className="filter-chips-container">

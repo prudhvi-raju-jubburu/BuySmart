@@ -8,7 +8,7 @@ import Modal from './components/Modal';
 import ComparisonChart from './components/ComparisonChart';
 import NotificationTicker from './components/NotificationTicker';
 import ErrorBoundary from './components/ErrorBoundary';
-import { searchProducts, getStats, getMe, getSearchHistory, clearSearchHistory, submitAISearchFeedback, setSessionExpiredCallback } from './services/api';
+import { searchProducts, getSearchStatus, getStats, getMe, getSearchHistory, clearSearchHistory, submitAISearchFeedback, setSessionExpiredCallback } from './services/api';
 import { ToastContainer } from './components/Toast';
 import Footer from './components/Footer';
 import FloatingFeedback from './components/FloatingFeedback';
@@ -30,6 +30,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [searchResult, setSearchResult] = useState(null);
+  const [searchStatus, setSearchStatus] = useState(null);
   const [userPanelOpen, setUserPanelOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('search');
@@ -203,9 +204,33 @@ function App() {
     setSearchQuery(query);
     setFilters(searchFilters);
 
+    const searchId = `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const initialPlatforms = (searchFilters?.platforms && searchFilters.platforms.length > 0)
+      ? searchFilters.platforms.map(p => p.toLowerCase())
+      : ['amazon', 'flipkart', 'myntra', 'meesho'];
+
+    setSearchStatus({
+      status: 'searching',
+      platforms: initialPlatforms.reduce((acc, p) => ({ ...acc, [p]: 'pending' }), {}),
+      stage: 'initializing'
+    });
+
+    let pollInterval = setInterval(async () => {
+      try {
+        const statusRes = await getSearchStatus(searchId);
+        if (statusRes.success) {
+          setSearchStatus(statusRes);
+        }
+      } catch (err) {
+        console.error("Error polling search status:", err);
+      }
+    }, 1000);
+
     try {
-      const results = await searchProducts(query, searchFilters);
-      setProducts(results.products || results.results || []);
+      const results = await searchProducts(query, searchFilters, searchId);
+      const productsToStore = results.products || results.results || [];
+      console.log("Products being stored:", productsToStore);
+      setProducts(productsToStore);
       setSearchResult(results);
 
       if (results.message) {
@@ -238,7 +263,9 @@ function App() {
       showToast('Error searching for products. Please try again.', 'error');
       setProducts([]);
     } finally {
+      clearInterval(pollInterval);
       setLoading(false);
+      setSearchStatus(null);
     }
   };
 
@@ -333,6 +360,7 @@ function App() {
                 <SearchPage
                   user={user}
                   loading={loading}
+                  searchStatus={searchStatus}
                   products={products}
                   searchQuery={searchQuery}
                   searchResult={searchResult}

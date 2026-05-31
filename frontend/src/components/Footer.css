@@ -1,5 +1,6 @@
 .footer {
   margin-top: 3rem;
+  margin-bottom: 0.03rem;
   padding: 2.5rem 0 1rem;
   background: var(--glass);
   backdrop-filter: blur(20px);

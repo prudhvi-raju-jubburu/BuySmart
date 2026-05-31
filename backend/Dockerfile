@@ -24,4 +24,4 @@ COPY . .
 
 # Expose port and run the Flask application
 EXPOSE 5001
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "run:app"]
+CMD ["gunicorn", "run:app", "--bind", "0.0.0.0:5001", "--workers", "1", "--threads", "2", "--timeout", "120"]

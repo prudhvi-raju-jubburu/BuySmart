@@ -116,9 +116,23 @@ const AdminPage = ({ user: currentUser }) => {
             <h2 className="page-title">Loading Admin Workspace</h2>
             <p className="page-subtitle">Fetching operational metrics and user accounts...</p>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            <SkeletonTable />
-            <SkeletonTable />
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            minHeight: '350px', 
+            gap: '1.5rem',
+            background: 'var(--glass)',
+            border: '1px solid var(--glass-border)',
+            borderRadius: '24px',
+            padding: '3rem',
+            boxShadow: 'var(--card-shadow)'
+          }}>
+            <div className="admin-spinner"></div>
+            <span style={{ color: 'var(--text-dim)', fontWeight: '600', fontSize: '1rem' }}>
+              Fetching system metrics and user accounts...
+            </span>
           </div>
         </div>
       </div>

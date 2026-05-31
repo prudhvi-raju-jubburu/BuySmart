@@ -199,14 +199,22 @@ const Footer = ({ onOpenFeedback, onNavigate }) => {
           </div>
 
           <div className="footer-developer">
-            Developed by{' '}
+            Developed by :{' '}
             <a
               href="https://www.linkedin.com/in/jubburu-prudhvi-raju/"
               target="_blank"
               rel="noopener noreferrer"
               className="developer-link"
             >
-              Jubburu Prudhvi Raju
+              Jubburu Prudhvi Raju 
+            </a>
+            <a
+              href="https://www.linkedin.com/in/naveen-kumar-843a66346/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="developer-link"
+            >
+              &nbsp;&amp;&nbsp;K. Naveen Kumar
             </a>
           </div>
         </div>

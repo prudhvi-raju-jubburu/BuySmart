@@ -79,13 +79,16 @@ class AISearchService:
     """AI Search Service connecting LLM intent extraction with product rankings"""
     
     def __init__(self):
-        self.gemini_key = os.environ.get("GEMINI_API_KEY")
+        self.gemini_key = Config.GEMINI_API_KEY
         self.openai_key = os.environ.get("OPENAI_API_KEY")
+        self.gemini_model = Config.GEMINI_MODEL
 
         logger.info(
             f"Gemini Key Loaded: {bool(self.gemini_key)}"
         )
-
+        logger.info(
+            f"Gemini Model: {self.gemini_model}"
+        )
         logger.info(
             f"OpenAI Key Loaded: {bool(self.openai_key)}"
         )
@@ -143,7 +146,10 @@ class AISearchService:
             cached = db.session.query(AISearchCache).filter_by(query_hash=query_hash).first()
             if cached and cached.expires_at > datetime.utcnow():
                 logger.info("AI Search: Intent cache hit")
-                return cached.intent_json
+                intent = cached.intent_json
+                if intent:
+                    intent.setdefault("gemini_used", False)
+                return intent
         except Exception as ex:
             logger.warning(f"Cache lookup failed: {ex}")
                    
@@ -152,15 +158,20 @@ class AISearchService:
         # 2. Try Gemini
         if self.gemini_key:
             intent = self.try_gemini(query, user_context_str)
+            if intent:
+                intent["gemini_used"] = True
             
         # 3. Try OpenAI
         if not intent and self.openai_key:
             intent = self.try_openai(query, user_context_str)
+            if intent:
+                intent["gemini_used"] = False
             
         # 4. Fallback parser
         if not intent:
             logger.info("LLM APIs unavailable or on cooldown. Falling back to local parser.")
             intent = self.fallback_parser(query)
+            intent["gemini_used"] = False
             
         # Post-process and sanitize budget limits
         try:
@@ -199,7 +210,7 @@ class AISearchService:
         return intent
 
     def try_gemini(self, query, user_context_str=None):
-        """Attempts to extract intent using Google Gemini 2.0 Flash. Enforces cooldown on failures."""
+        """Attempts to extract intent using Google Gemini. Enforces cooldown on failures."""
         if is_provider_on_cooldown("gemini"):
             logger.info("Gemini is on cooldown. Skipping API call.")
             return None
@@ -225,8 +236,11 @@ class AISearchService:
         user_prompt = f"User Context (resolve pronouns like 'one' or 'it' using this if needed): {user_context_str or 'None'}\n\nSearch Query: \"{query}\"\n\nJSON output:"
 
         try:
-            logger.info("Executing intent extraction via Google Gemini Flash...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={self.gemini_key}"
+            logger.info("=== GEMINI REQUEST START ===")
+            logger.info(f"Query: {query}")
+            
+            gemini_model = getattr(self, 'gemini_model', 'gemini-2.0-flash')
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={self.gemini_key}"
             payload = {
                 "contents": [
                     {
@@ -242,23 +256,37 @@ class AISearchService:
                 }
             }
             res = requests.post(url, json=payload, timeout=12)
+            logger.info("=== GEMINI RESPONSE ===")
+            logger.info(res.text)
             logger.info(f"Gemini Status Code: {res.status_code}")
 
             if res.status_code == 200:
                 data = res.json()
                 if "candidates" in data and len(data["candidates"]) > 0:
                     text_res = data["candidates"][0]["content"]["parts"][0]["text"]
-                    return json.loads(text_res)
+                    intent_data = json.loads(text_res)
+                    
+                    logger.info(f"Category: {intent_data.get('category')}")
+                    logger.info(f"Purpose: {intent_data.get('purpose')}")
+                    logger.info(f"Budget: {intent_data.get('budget_max')}")
+                    logger.info(f"Keywords: {intent_data.get('rewritten_query')}")
+                    logger.info(f"Confidence: {intent_data.get('confidence')}")
+                    
+                    return intent_data
                 else:
+                    logger.error("Gemini API failed")
                     logger.error(f"Gemini returned no candidates: {json.dumps(data)}")
             elif res.status_code == 429 or "RESOURCE_EXHAUSTED" in res.text or "quota" in res.text.lower():
+                logger.error("Gemini API failed")
                 logger.warning("Gemini rate limit or quota exceeded. Triggering cooldown.")
                 mark_provider_quota_failed("gemini")
             else:
+                logger.error("Gemini API failed")
                 logger.error(f"Gemini API failed ({res.status_code}): {res.text}")
                 if res.status_code >= 400:
                     mark_provider_quota_failed("gemini")
         except Exception as e:
+            logger.error("Gemini API failed")
             logger.exception("Gemini API execution failed")
             err_str = str(e).lower()
             if "429" in err_str or "quota" in err_str or "exhausted" in err_str or "limit" in err_str:

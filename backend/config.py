@@ -79,12 +79,20 @@ class Config:
         if not jwt_secret:
             raise RuntimeError("JWT_SECRET_KEY environment variable is not set.")
 
+        gemini_key = os.environ.get("GEMINI_API_KEY")
+        if gemini_key:
+            print("Gemini API Key Loaded")
+        else:
+            print("Gemini API Key Missing")
+        print(f"Gemini Model: {os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')}")
+
         print("Environment Validation Passed")
 
     # =====================================================
     # Gemini AI
     # =====================================================
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
     # =====================================================
     # Scraping Configuration

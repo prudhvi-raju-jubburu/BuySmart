@@ -23,6 +23,8 @@ import threading
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+ACTIVE_PLATFORMS = ["amazon", "flipkart", "myntra", "meesho"]
+
 CHROMEDRIVER_PATH = None
 chromedriver_lock = threading.Lock()
 
@@ -126,16 +128,26 @@ class SeleniumScraper(BaseScraper):
         self.driver = None
 
     def _setup_driver(self):
+        if self.driver:
+            logger.info("Existing driver found in setup. Quitting existing session...")
+            try:
+                self.driver.quit()
+            except Exception as e:
+                logger.warning(f"Failed to quit existing driver: {e}")
+            self.driver = None
+
         logger.info("Initializing Chromium WebDriver...")
         options = ChromeOptions()
         
-        # Headless container configuration
-        options.add_argument("--headless") 
+        # Headless container configuration (optimized for low memory/512MB RAM limits)
+        options.add_argument("--headless=new") 
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-software-rasterizer")
         options.add_argument("--window-size=1920,1080")
-        options.add_argument("--start-maximized")
         
         import os
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -173,6 +185,7 @@ class SeleniumScraper(BaseScraper):
             start_setup = time.time()
             self.driver = webdriver.Chrome(service=ChromeService(path), options=options)
             self.driver.set_page_load_timeout(30)
+            self.driver.implicitly_wait(5)
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             duration = time.time() - start_setup
             logger.info(f"Chromium WebDriver initialized successfully in {duration:.2f}s.")
@@ -200,15 +213,24 @@ class SeleniumScraper(BaseScraper):
             return None
         
         try:
-            self.driver.get(url)
+            from selenium.common.exceptions import TimeoutException
+            try:
+                self.driver.get(url)
+            except TimeoutException:
+                logger.warning(f"Page load timed out (page_load_timeout exceeded) for {url}, attempting to extract available HTML source.")
+            
             # Wait for body to be present
-            WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            try:
+                WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+            except Exception as wait_exc:
+                logger.warning(f"Body element presence check timed out: {wait_exc}")
             
             # Scroll to trigger lazy loading
-            self.driver.execute_script("window.scrollTo(0, 500);")
-            time.sleep(2)
-            self.driver.execute_script("window.scrollTo(0, 1000);")
-            time.sleep(1)
+            try:
+                self.driver.execute_script("window.scrollTo(0, 500);")
+                time.sleep(1)
+            except:
+                pass
             
             return self.driver.page_source
         except Exception as e:
@@ -223,7 +245,7 @@ class AmazonScraper(SeleniumScraper):
         super().__init__()
         self.platform = "Amazon"
     
-    def search_products(self, query, max_results=10):
+    def search_products(self, query, max_results=15):
         """Search for products on Amazon using Selenium"""
         logger.info(f"Starting Amazon scraper for query: {query}")
         start_time = time.time()
@@ -668,8 +690,11 @@ class ScraperManager:
         }
         return scores.get(platform, 0.5)
     
-    def scrape_platform(self, platform_name, query=None, max_results=10):
+    def scrape_platform(self, platform_name, query=None, max_results=15):
         """Scrape products from a single platform and store/update them in DB."""
+        if platform_name.lower() not in ACTIVE_PLATFORMS:
+            logger.warning(f"Platform {platform_name} is not in ACTIVE_PLATFORMS.")
+            return []
         scraper = self.scrapers.get(platform_name.lower())
         if not scraper:
             logger.warning(f"No scraper found for {platform_name}")
@@ -754,6 +779,9 @@ class ScraperManager:
 
     def scrape_platform_realtime(self, platform_name, query=None, max_results=15):
         """Real-time scraping: Fetch products without saving to DB"""
+        if platform_name.lower() not in ACTIVE_PLATFORMS:
+            logger.warning(f"Platform {platform_name} is not in ACTIVE_PLATFORMS.")
+            return []
         scraper = self.scrapers.get(platform_name.lower())
         if not scraper:
             logger.warning(f"No scraper found for {platform_name}")
