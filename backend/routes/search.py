@@ -83,12 +83,16 @@ search_bp = Blueprint('search', __name__)
 ai_search_service = AISearchService()
 scraper_manager = ScraperManager()
 recommender = ProductRecommender()
+from services.search_orchestrator import SearchOrchestrator
+search_orchestrator = SearchOrchestrator()
 
 CATEGORY_MAP = {
     "shirt": ["shirt", "shirts", "tshirt", "t-shirt", "formal shirt", "casual shirt"],
     "watch": ["watch", "watches", "smartwatch"],
     "headphone": ["headphone", "earphone", "earbud", "earbuds"],
-    "mobile_cover": ["cover", "case", "mobile cover"]
+    "mobile_cover": ["cover", "case", "mobile cover"],
+    "laptop": ["laptop", "laptops", "notebook", "notebooks", "macbook", "chromebook"],
+    "shoes": ["shoe", "shoes", "sneaker", "sneakers", "running shoes", "sports shoes"]
 }
 
 def detect_category_from_query(query):
@@ -117,6 +121,10 @@ def product_matches_category(product, category):
         map_key = "headphone"
     elif cat_lower in ["cover", "covers", "case", "cases", "mobile cover", "mobile_cover"]:
         map_key = "mobile_cover"
+    elif cat_lower in ["laptop", "laptops", "notebook", "notebooks", "macbook", "chromebook"]:
+        map_key = "laptop"
+    elif cat_lower in ["shoes", "shoe", "sneaker", "sneakers", "running shoes", "sports shoes"]:
+        map_key = "shoes"
         
     if not map_key:
         return True
@@ -263,8 +271,8 @@ def handle_ai_search_pipeline(query, filters, user, search_id=None):
                 if pe.product:
                     purchased_urls.add(pe.product.product_url.lower())
                     
-        # Extract Structured Intent (with built-in cache checks)
-        intent = ai_search_service.extract_intent(query, user_context_str)
+        # Extract Structured Intent using SearchOrchestrator
+        intent = search_orchestrator.parse_query_intent(query, user_context_str)
         confidence = intent.get('confidence', 0.5)
         rewritten_q = intent.get('rewritten_query') or query
         
@@ -340,6 +348,14 @@ def handle_ai_search_pipeline(query, filters, user, search_id=None):
                 
         products_list = [p.to_dict() for p in local_products]
         
+        # Apply category validation to cache products list before checking scraper threshold
+        detected_category = category or detect_category_from_query(query)
+        logger.info(f"AI Search Category Filtering: Detected category '{detected_category}'")
+        if detected_category:
+            from services.category_filter import CategoryRelevanceFilter
+            products_list = [p for p in products_list if product_matches_category(p, detected_category)]
+            products_list = [p for p in products_list if not CategoryRelevanceFilter.is_irrelevant(p, detected_category, query.lower())]
+        
         # Platform scraper fallback if local products < 10
         if len(products_list) < 10:
             if search_id:
@@ -380,6 +396,12 @@ def handle_ai_search_pipeline(query, filters, user, search_id=None):
             for sp in scraped_results:
                 url = sp.get('product_url', '').lower()
                 if url and url not in seen_urls:
+                    if detected_category:
+                        from services.category_filter import CategoryRelevanceFilter
+                        if not product_matches_category(sp, detected_category):
+                            continue
+                        if CategoryRelevanceFilter.is_irrelevant(sp, detected_category, query.lower()):
+                            continue
                     seen_urls.add(url)
                     products_list.append(sp)
         else:
@@ -393,11 +415,6 @@ def handle_ai_search_pipeline(query, filters, user, search_id=None):
             update_search_status(search_id, {
                 "stage": "ranking"
             })
-        # Apply category validation before ranking
-        detected_category = category or detect_category_from_query(query)
-        logger.info(f"AI Search Category Filtering: Detected category '{detected_category}'")
-        if detected_category:
-            products_list = [p for p in products_list if product_matches_category(p, detected_category)]
 
         recommender_filters = {
             'min_price': budget_min,
@@ -571,6 +588,14 @@ def handle_keyword_search_pipeline(query, filters, user, search_id=None):
             
         all_products = [p.to_dict() for p in local_products]
         
+        # Apply category validation to cache products list before checking scraper threshold
+        detected_category = detect_category_from_query(query)
+        logger.info(f"Keyword Search Category Filtering: Detected category '{detected_category}'")
+        if detected_category:
+            from services.category_filter import CategoryRelevanceFilter
+            all_products = [p for p in all_products if product_matches_category(p, detected_category)]
+            all_products = [p for p in all_products if not CategoryRelevanceFilter.is_irrelevant(p, detected_category, query.lower())]
+            
         # Run scrapers as fallback/supplement if local products < 10
         if len(all_products) < 10:
             if search_id:
@@ -611,6 +636,12 @@ def handle_keyword_search_pipeline(query, filters, user, search_id=None):
             for sp in scraped_results:
                 url = sp.get('product_url', '').lower()
                 if url and url not in seen_urls:
+                    if detected_category:
+                        from services.category_filter import CategoryRelevanceFilter
+                        if not product_matches_category(sp, detected_category):
+                            continue
+                        if CategoryRelevanceFilter.is_irrelevant(sp, detected_category, query.lower()):
+                            continue
                     seen_urls.add(url)
                     all_products.append(sp)
         else:
@@ -672,12 +703,6 @@ def handle_keyword_search_pipeline(query, filters, user, search_id=None):
                 except (ValueError, TypeError):
                     pass
             filtered_products.append(p)
-            
-        # Apply category validation before ranking in keyword pipeline
-        detected_category = detect_category_from_query(query)
-        logger.info(f"Keyword Search Category Filtering: Detected category '{detected_category}'")
-        if detected_category:
-            filtered_products = [p for p in filtered_products if product_matches_category(p, detected_category)]
 
         if search_id:
             update_search_status(search_id, {

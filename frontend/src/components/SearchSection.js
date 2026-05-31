@@ -116,6 +116,10 @@ const SearchSection = ({ onSearch, filters: initialFilters, onClearFilters, onCl
           </button>
         </div>
 
+        <div className="search-hint-note">
+          💡 <strong>Note:</strong> Give all inputs to get better results
+        </div>
+
         <div className="filters">
           <div className="filter-controls-row">
             <div className="filter-group">

@@ -639,6 +639,16 @@ class ProductRecommender:
         if not intent_category:
             return True
             
+        from .category_filter import CategoryRelevanceFilter
+        p_dict = {
+            "name": product_title,
+            "category": product_category,
+            "description": ""
+        }
+        if CategoryRelevanceFilter.is_irrelevant(p_dict, intent_category, query_lower or ""):
+            logger.info(f"Recommender Category validation rejected product: {product_title}")
+            return False
+
         p_cat = (product_category or "").strip().lower()
         p_title = (product_title or "").strip().lower()
         intent_cat = intent_category.strip().lower()
@@ -885,89 +895,9 @@ class ProductRecommender:
             return 0.5
 
     def calculate_final_product_score(self, product, relevance_score, query_intent=None, max_reviews=1, user_pref=None, strict=True):
-        p_name = self._get_val(product, 'name') or ''
-        p_cat = self._get_val(product, 'category') or ''
-        p_desc = self._get_val(product, 'description') or ''
-        p_brand = (self._get_val(product, 'brand') or '').lower().strip()
-        p_price = self._get_val(product, 'price')
-        p_text = f"{p_name} {p_desc} {p_cat}".lower()
-        
-        brand_multiplier = 1.0
-        requested_brand = query_intent.get('requested_brand') if query_intent else None
-        if requested_brand:
-            if p_brand:
-                if p_brand == requested_brand:
-                    brand_multiplier = 1.0
-                else:
-                    brand_multiplier = 0.4 if strict else 0.7
-            else:
-                has_other_brand = False
-                for b in self.RECOGNIZED_BRANDS:
-                    if b != requested_brand and re.search(r'\b' + re.escape(b) + r'\b', p_name.lower()):
-                        has_other_brand = True
-                        break
-                if has_other_brand:
-                    brand_multiplier = 0.4 if strict else 0.7
-                else:
-                    brand_multiplier = 0.7
-                    
-        relevance = relevance_score * brand_multiplier
-        quality = self.calculate_quality_score(product, max_reviews)
-        
-        preference = 0.0
-        if user_pref:
-            cat_affinity = user_pref.preferred_categories.get(p_cat, 0) if p_cat else 0
-            brand_affinity = user_pref.preferred_brands.get(p_brand, 0) if p_brand else 0
-            p_platform = self._get_val(product, 'platform')
-            plat_affinity = user_pref.preferred_platforms.get(p_platform, 0) if p_platform else 0
-            
-            max_cat = max(user_pref.preferred_categories.values()) if user_pref.preferred_categories else 1
-            max_brand = max(user_pref.preferred_brands.values()) if user_pref.preferred_brands else 1
-            max_plat = max(user_pref.preferred_platforms.values()) if user_pref.preferred_platforms else 1
-            
-            cat_score = cat_affinity / max_cat if max_cat > 0 else 0.0
-            brand_score = brand_affinity / max_brand if max_brand > 0 else 0.0
-            plat_score = plat_affinity / max_plat if max_plat > 0 else 0.0
-            
-            price_score = 0.0
-            if p_price is not None:
-                try:
-                    price_val = float(p_price)
-                    if user_pref.preferred_price_min <= price_val <= user_pref.preferred_price_max:
-                        price_score = 1.0
-                    elif (user_pref.preferred_price_min * 0.5) <= price_val <= (user_pref.preferred_price_max * 1.5):
-                        price_score = 0.5
-                except (ValueError, TypeError):
-                    pass
-            preference = 0.4 * cat_score + 0.3 * brand_score + 0.2 * price_score + 0.1 * plat_score
-            
-        review_count = float(self._get_val(product, 'review_count') or 0.0)
-        popularity = (review_count / max_reviews) if max_reviews > 0 else 0.0
-        
-        detected_purpose = query_intent.get('detected_purpose') if query_intent else None
-        spec = self.calculate_spec_match_score(p_text, detected_purpose, p_price, p_brand)
-        
-        created_at = self._get_val(product, 'created_at')
-        freshness = self.calculate_freshness_score(created_at)
-        
-        final_score = (
-            0.75 * relevance +
-            0.0833 * quality +
-            0.0625 * preference +
-            0.0417 * popularity +
-            0.0417 * spec +
-            0.0208 * freshness
-        )
-        
-        breakdown = {
-            'relevance_score': relevance,
-            'quality_score': quality,
-            'preference_score': preference,
-            'popularity_score': popularity,
-            'spec_score': spec,
-            'freshness_score': freshness
-        }
-        return min(1.0, max(0.0, final_score)), breakdown
+        from .relevance_scorer import RelevanceScorer
+        p_dict = product if isinstance(product, dict) else product.to_dict()
+        return RelevanceScorer.calculate_final_score(p_dict, relevance_score, query_intent, max_reviews, user_pref, strict)
 
     def _apply_diversity_and_limit(self, scored_items, limit=20):
         diverse_list = []
@@ -1326,20 +1256,40 @@ class ProductRecommender:
             db.session.rollback()
             return None
 
+    def _get_all_product_popularity(self):
+        """Get popularity count map for all products to avoid N+1 queries"""
+        try:
+            clicks_by_pid = {}
+            for pid, count in db.session.query(ClickEvent.product_id, db.func.count(ClickEvent.id)).group_by(ClickEvent.product_id).all():
+                if pid:
+                    clicks_by_pid[pid] = count
+                    
+            wishlists_by_pid = {}
+            for pid, count in db.session.query(WishlistItem.product_id, db.func.count(WishlistItem.id)).group_by(WishlistItem.product_id).all():
+                if pid:
+                    wishlists_by_pid[pid] = count
+                    
+            purchases_by_pid = {}
+            for pid, count in db.session.query(PurchaseEvent.product_id, db.func.count(PurchaseEvent.id)).group_by(PurchaseEvent.product_id).all():
+                if pid:
+                    purchases_by_pid[pid] = count
+                    
+            all_pids = set(clicks_by_pid.keys()) | set(wishlists_by_pid.keys()) | set(purchases_by_pid.keys())
+            popularity_map = {}
+            for pid in all_pids:
+                popularity_map[pid] = clicks_by_pid.get(pid, 0) + 3 * wishlists_by_pid.get(pid, 0) + 5 * purchases_by_pid.get(pid, 0)
+            return popularity_map
+        except Exception as e:
+            logger.warning(f"Error compiling product popularity map: {e}")
+            return {}
+
     def _get_max_popularity(self):
         """Get max interaction count across all products for normalization"""
         try:
-            all_prods = Product.query.with_entities(Product.id).all()
-            max_interactions = 0
-            for pid, in all_prods:
-                clicks = ClickEvent.query.filter_by(product_id=pid).count()
-                wishlists = WishlistItem.query.filter_by(product_id=pid).count()
-                purchases = PurchaseEvent.query.filter_by(product_id=pid).count()
-                val = clicks + 3 * wishlists + 5 * purchases
-                if val > max_interactions:
-                    max_interactions = val
-            return max_interactions
-        except Exception:
+            pop_map = self._get_all_product_popularity()
+            return max(pop_map.values()) if pop_map else 0
+        except Exception as e:
+            logger.warning(f"Error calculating max popularity: {e}")
             return 1
 
     def calculate_hybrid_score(self, product, user_pref, user_vector, max_popularity):
@@ -1362,20 +1312,28 @@ class ProductRecommender:
             'final_score': round(final_score, 2)
         }
 
-    def generate_explanation(self, product, user_pref, user_id, is_exploration=False):
+    def generate_explanation(self, product, user_pref, user_id, is_exploration=False, wishlist_pids=None, click_pids=None):
         """Generate human-readable personalization explanations based on user history"""
         if is_exploration:
             return f"Trending product in {product.category or 'Other'} to discover"
             
         # Check wishlist
-        wish = WishlistItem.query.filter_by(user_id=user_id, product_id=product.id).first()
-        if wish:
-            return "Similar to items in your wishlist"
+        if wishlist_pids is not None:
+            if product.id in wishlist_pids:
+                return "Similar to items in your wishlist"
+        else:
+            wish = WishlistItem.query.filter_by(user_id=user_id, product_id=product.id).first()
+            if wish:
+                return "Similar to items in your wishlist"
             
         # Check clicks
-        clicks = ClickEvent.query.filter_by(user_id=user_id, product_id=product.id).first()
-        if clicks:
-            return "Based on products you recently viewed"
+        if click_pids is not None:
+            if product.id in click_pids:
+                return "Based on products you recently viewed"
+        else:
+            clicks = ClickEvent.query.filter_by(user_id=user_id, product_id=product.id).first()
+            if clicks:
+                return "Based on products you recently viewed"
             
         # Preferred brand
         if user_pref and product.brand and product.brand in user_pref.preferred_brands:
@@ -1398,6 +1356,10 @@ class ProductRecommender:
         """Core personalized recommendation method serving three distinct rails"""
         if not self.is_trained:
             self.train()
+            
+        popularity_map = self._get_all_product_popularity()
+        wishlist_pids = {w.product_id for w in WishlistItem.query.filter_by(user_id=user_id).all() if w.product_id}
+        click_pids = {c.product_id for c in ClickEvent.query.filter_by(user_id=user_id).all() if c.product_id}
             
         # Update user profile
         user_pref = UserPreference.query.filter_by(user_id=user_id).first()
@@ -1444,7 +1406,7 @@ class ProductRecommender:
                     if norm > 0:
                         user_vector = user_vector / norm
                         
-        max_popularity = self._get_max_popularity()
+        max_popularity = max(popularity_map.values()) if popularity_map else 0
         
         # Candidate products
         candidates_query = Product.query
@@ -1504,10 +1466,7 @@ class ProductRecommender:
             other_candidates = other_candidates_query.all()
             other_scored = []
             for p in other_candidates:
-                clicks = ClickEvent.query.filter_by(product_id=p.id).count()
-                wishlists = WishlistItem.query.filter_by(product_id=p.id).count()
-                purchases = PurchaseEvent.query.filter_by(product_id=p.id).count()
-                pop = clicks + 3 * wishlists + 5 * purchases
+                pop = popularity_map.get(p.id, 0)
                 other_scored.append((p, pop))
                 
             other_scored.sort(key=lambda x: x[1], reverse=True)
@@ -1518,7 +1477,7 @@ class ProductRecommender:
         for i, item in enumerate(diverse_list):
             recommended_for_you_rail.append({
                 'product': item['product'].to_dict(),
-                'reason': self.generate_explanation(item['product'], user_pref, user_id),
+                'reason': self.generate_explanation(item['product'], user_pref, user_id, wishlist_pids=wishlist_pids, click_pids=click_pids),
                 'breakdown': item['breakdown'],
                 'is_exploration': False
             })
@@ -1529,7 +1488,7 @@ class ProductRecommender:
             _, breakdown = self.calculate_hybrid_score(p_explore, user_pref, user_vector, max_popularity)
             recommended_for_you_rail.insert(9, {
                 'product': p_explore.to_dict(),
-                'reason': self.generate_explanation(p_explore, user_pref, user_id, is_exploration=True),
+                'reason': self.generate_explanation(p_explore, user_pref, user_id, is_exploration=True, wishlist_pids=wishlist_pids, click_pids=click_pids),
                 'breakdown': breakdown,
                 'is_exploration': True
             })
@@ -1539,7 +1498,7 @@ class ProductRecommender:
             _, breakdown = self.calculate_hybrid_score(p_explore, user_pref, user_vector, max_popularity)
             recommended_for_you_rail.insert(18, {
                 'product': p_explore.to_dict(),
-                'reason': self.generate_explanation(p_explore, user_pref, user_id, is_exploration=True),
+                'reason': self.generate_explanation(p_explore, user_pref, user_id, is_exploration=True, wishlist_pids=wishlist_pids, click_pids=click_pids),
                 'breakdown': breakdown,
                 'is_exploration': True
             })
@@ -1558,10 +1517,7 @@ class ProductRecommender:
         trending_scored = []
         for p in trending_candidates:
             # Score primarily on global popularity and value
-            clicks = ClickEvent.query.filter_by(product_id=p.id).count()
-            wishlists = WishlistItem.query.filter_by(product_id=p.id).count()
-            purchases = PurchaseEvent.query.filter_by(product_id=p.id).count()
-            pop = clicks + 3 * wishlists + 5 * purchases
+            pop = popularity_map.get(p.id, 0)
             pop_score = float(np.log1p(pop) / np.log1p(max_popularity)) if max_popularity > 0 else 0.0
             
             rank_score = self.calculate_recommendation_score(p)
@@ -1589,6 +1545,7 @@ class ProductRecommender:
         
         if recent_viewed_product_ids and self.is_trained:
             similar_candidates_with_scores = []
+            pid_to_max_sim = {}
             
             for pid in recent_viewed_product_ids:
                 if pid in self.product_ids:
@@ -1596,27 +1553,30 @@ class ProductRecommender:
                     vec = self.product_vectors[idx]
                     similarities = cosine_similarity(vec, self.product_vectors).flatten()
                     
-                    # Sort candidates
                     for other_idx, sim in enumerate(similarities):
                         other_pid = self.product_ids[other_idx]
                         if other_pid == pid or other_pid in exclude_ids:
                             continue
-                        # If already added, keep the maximum similarity score
-                        existing = next((x for x in similar_candidates_with_scores if x[0].id == other_pid), None)
-                        if existing:
-                            if sim > existing[1]:
-                                similar_candidates_with_scores.remove(existing)
-                                product_obj = Product.query.get(other_pid)
-                                if product_obj:
-                                    similar_candidates_with_scores.append((product_obj, sim, pid))
-                        else:
-                            product_obj = Product.query.get(other_pid)
-                            if product_obj:
-                                similar_candidates_with_scores.append((product_obj, sim, pid))
-                                
+                        existing = pid_to_max_sim.get(other_pid)
+                        if not existing or sim > existing[0]:
+                            pid_to_max_sim[other_pid] = (sim, pid)
+            
+            # Sort candidate IDs by similarity score descending and slice top 20
+            sorted_candidates = sorted(pid_to_max_sim.items(), key=lambda x: x[1][0], reverse=True)
+            top_candidates_slice = sorted_candidates[:20]
+            
+            # Batch fetch all required products in one query
+            needed_pids = [item[0] for item in top_candidates_slice] + recent_viewed_product_ids
+            active_products = {p.id: p for p in Product.query.filter(Product.id.in_(needed_pids)).all()}
+            
+            for other_pid, (sim, source_pid) in top_candidates_slice:
+                product_obj = active_products.get(other_pid)
+                if product_obj:
+                    similar_candidates_with_scores.append((product_obj, sim, source_pid))
+                    
             similar_candidates_with_scores.sort(key=lambda x: x[1], reverse=True)
             for p, sim, source_pid in similar_candidates_with_scores[:6]:
-                source_product = Product.query.get(source_pid)
+                source_product = active_products.get(source_pid)
                 source_name = source_product.name[:30] + "..." if source_product else "items you viewed"
                 
                 # Compute sub-scores for breakdown
@@ -1668,16 +1628,14 @@ class ProductRecommender:
         except Exception:
             db.session.rollback()
 
-        max_popularity = self._get_max_popularity()
+        popularity_map = self._get_all_product_popularity()
+        max_popularity = max(popularity_map.values()) if popularity_map else 0
         
         def compile_rail(query_filter, reason_template):
             candidates = query_filter.all()
             scored = []
             for p in candidates:
-                clicks = ClickEvent.query.filter_by(product_id=p.id).count()
-                wishlists = WishlistItem.query.filter_by(product_id=p.id).count()
-                purchases = PurchaseEvent.query.filter_by(product_id=p.id).count()
-                pop = clicks + 3 * wishlists + 5 * purchases
+                pop = popularity_map.get(p.id, 0)
                 pop_score = float(np.log1p(pop) / np.log1p(max_popularity)) if max_popularity > 0 else 0.0
                 rank_score = self.calculate_recommendation_score(p)
                 score = 0.5 * pop_score + 0.5 * rank_score
