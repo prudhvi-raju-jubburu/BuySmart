@@ -32,16 +32,8 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config.from_object(Config)
-# Enable CORS for React frontend
-CORS(
-    app,
-    resources={r"/*": {"origins": [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://buysmart-ai.vercel.app"
-    ]}},
-    supports_credentials=True
-)
+# Enable CORS for React frontend (allow all origins for public API accessibility)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 
 

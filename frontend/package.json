@@ -5,6 +5,8 @@
   "private": true,
   "dependencies": {
     "axios": "^1.6.2",
+    "baseline-browser-mapping": "^2.10.43",
+    "caniuse-lite": "^1.0.30001805",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
@@ -35,6 +37,3 @@
   },
   "proxy": "http://localhost:5001"
 }
-
-
-
